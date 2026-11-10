@@ -1,7 +1,7 @@
 # agent-swarmfold
 
 Aplikasi lokal yang mengubah file data penjualan menjadi tiga hal sekaligus:
-notebook analisis yang sudah dieksekusi, laporan dua halaman untuk pemilik usaha,
+notebook analisis yang sudah dieksekusi, laporan untuk pemilik usaha,
 dan data bersih beserta kamusnya.
 
 Agent berjalan otonom: menulis satu cell, mengeksekusinya, membaca output angka,

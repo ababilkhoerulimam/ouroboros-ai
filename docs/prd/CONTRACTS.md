@@ -215,7 +215,7 @@ Larangan pada tahap penulisan laporan:
 - mengetik angka secara literal di luar slot;
 - menambah klaim yang tidak punya `E-###`;
 - memakai istilah statistik di badan utama (bootstrap, p-value, regresi);
-- melebihi 3 keputusan atau 2 halaman.
+- melebihi 3 keputusan, atau melanggar `REPORT-STANDARD.md` §7.
 
 ## 9. Paket unduhan
 

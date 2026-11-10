@@ -124,6 +124,8 @@ Tugasnya menyerang, bukan melengkapi:
 - Menulis prosa dengan slot `{{E-###}}`; tidak mengetik angka sendiri.
 - Struktur: maksimal 3 keputusan, tiap keputusan memuat temuan, angka, mengapa
   penting, aksi, batasan.
+- Struktur bagian, aturan bahasa, aturan angka, dan checklist mutu mengikuti
+  `REPORT-STANDARD.md`.
 - Wajib ada bagian "Yang tidak bisa dijawab dari data ini".
 - Wajib ada bagian "Cara membaca angka ini" (satu paragraf, bahasa awam).
 

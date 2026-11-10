@@ -73,7 +73,7 @@ controller transisi fase.
 - satu fixture dengan slot rusak sengaja menggagalkan penerbitan laporan
   (bukan diam-diam menghasilkan tanda "-");
 - angka di laporan identik dengan `evidence.json` (dibandingkan otomatis);
-- laporan ≤ 2 halaman dan ≤ 3 keputusan (dihitung otomatis);
+- laporan ≤ 3 keputusan dan ≤ 6 chart di badan (dihitung otomatis);
 - PDF dapat dibuka dan chart tampil.
 
 ## M5 — Verifikasi dan paket

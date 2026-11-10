@@ -15,7 +15,8 @@ menulis cell berikutnya, sampai analisis selesai.
 Hasil akhir yang dapat diunduh dalam satu paket:
 
 1. `analysis.ipynb` — notebook yang sudah dieksekusi, seluruh output dan chart tertanam.
-2. `laporan.md` + `laporan.pdf` — laporan 2 halaman berbahasa Indonesia untuk pemilik usaha.
+2. `laporan.md` + `laporan.pdf` — laporan berbahasa Indonesia untuk pemilik usaha,
+   mengikuti `REPORT-STANDARD.md`.
 3. `data_bersih.csv` + `data_dictionary.md` + `cleaning_log.json` — data siap pakai.
 4. `audit/` — jejak bukti: setiap angka di laporan dapat ditelusuri ke cell asalnya.
 
@@ -100,7 +101,8 @@ Tidak ada langkah lain. Tidak ada approval, tidak ada interupsi.
 - Tujuh fase analisis otonom (lihat `LANES.md`).
 - Deep-dive checkpoint setiap 10 cell.
 - Notebook tereksekusi + chart tertanam.
-- Laporan 2 halaman dengan pengisian angka deterministik.
+- Laporan tanpa batas halaman dengan pengisian angka deterministik, mengikuti
+  `REPORT-STANDARD.md`.
 - Data bersih + kamus data + log pembersihan.
 - Antrean job sederhana (satu run aktif pada satu waktu).
 - Docker compose satu service.
@@ -122,7 +124,7 @@ Satu file `paket-<run_id>.zip`:
 | Path | Isi | Wajib |
 |---|---|---|
 | `analysis.ipynb` | notebook tereksekusi, output + chart tertanam | ya |
-| `laporan.md` | laporan 2 halaman, bahasa Indonesia | ya |
+| `laporan.md` | laporan bahasa Indonesia; dibatasi 3 keputusan dan 6 chart, bukan halaman | ya |
 | `laporan.pdf` | versi cetak dari laporan | ya |
 | `data_bersih.csv` | data hasil pembersihan | ya |
 | `data_dictionary.md` | arti kolom, satuan, asal | ya |
