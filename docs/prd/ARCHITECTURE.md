@@ -138,7 +138,7 @@ Seluruh konfigurasi lewat environment. Tidak ada nilai rahasia di dalam image.
 | Variabel | Wajib | Default | Keterangan |
 |---|---|---|---|
 | `SWARMFOLD_API_KEY` | ya | — | kredensial model |
-| `SWARMFOLD_BASE_URL` | tidak | `http://207.180.238.59:30015/v1` | endpoint OpenAI-compatible |
+| `SWARMFOLD_BASE_URL` | ya | — | endpoint OpenAI-compatible; nilai hanya di `.env` |
 | `SWARMFOLD_MODEL` | tidak | `ag/gemini-3.8-flash-high` | model utama |
 | `SWARMFOLD_MAX_CELLS` | tidak | 120 | pengaman biaya |
 | `SWARMFOLD_CELL_TIMEOUT_S` | tidak | 300 | batas per cell |

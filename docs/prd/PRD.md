@@ -158,7 +158,8 @@ Satu file `paket-<run_id>.zip`:
 
 ## 11. Provider model
 
-Endpoint: `http://207.180.238.59:30015/v1` — OpenAI-compatible.
+Endpoint: `http://<host>:<port>/v1` — OpenAI-compatible. Nilai sebenarnya hanya
+ada di `.env` (tidak di-commit).
 Autentikasi: bearer token dari environment (`SWARMFOLD_API_KEY`), tidak pernah
 masuk image, log, atau artefak run.
 
