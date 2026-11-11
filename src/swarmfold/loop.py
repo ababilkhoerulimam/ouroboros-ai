@@ -163,8 +163,12 @@ class AgentLoop:
     def _drive(self, messages: list[dict[str, Any]], toolbox: ToolBox) -> None:
         # Batas turn dihitung dari jumlah panggilan model, bukan dari cell:
         # `run_cell` yang ditolak tidak menaikkan `cells_run`, jadi penjaga
-        # berbasis cell tidak pernah berhenti.
-        max_turns = self.settings.max_cells + 20
+        # berbasis cell tidak pernah berhenti. Anggarannya dua kali batas cell
+        # karena satu cell biasanya disertai beberapa turn bukan-cell: menulis
+        # evidence, membuat chart, membaca artefak saat audit F6. Run
+        # 2026-11-11-a3ab1f menghabiskan 140 turn untuk 49 cell, jadi batas
+        # lama (max_cells + 20) habis sebelum F7 menulis laporan.
+        max_turns = self.settings.max_cells * 2 + 40
         stuck = 0
         for _turn in range(max_turns):
             self._maybe_checkpoint(messages)
@@ -374,6 +378,7 @@ class AgentLoop:
                 evidence_in_phase=self.store.count(phase),
                 checkpoint_in=remaining,
                 stalls=self.stalls,
+                next_ids=self.store.next_ids(),
             ),
             self.prompts.phase(phase),
         ]

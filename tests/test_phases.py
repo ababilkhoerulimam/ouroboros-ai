@@ -340,3 +340,17 @@ def test_prompt_library_loads_and_raises_for_missing(tmp_path):
 
 def test_phases_constant_is_complete():
     assert PHASES == ("F1", "F2", "F3", "F4", "F5", "F6", "F7")
+
+
+def test_state_block_renders_next_ids():
+    # Id dipakai bersama seluruh fase, jadi model harus tahu nomor bebasnya.
+    block = PromptLibrary().state_block(
+        phase="F6",
+        cell=49,
+        evidence_count=24,
+        allowed=["F5", "F7"],
+        phase_completed=["F1", "F2", "F3", "F5"],
+        next_ids=(25, 5),
+    )
+
+    assert "next_ids=E-025,H-005" in block

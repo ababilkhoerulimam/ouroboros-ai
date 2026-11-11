@@ -327,3 +327,13 @@ def test_rounded_rupiah_display_matches_decimal_rendering(tmp_path):
     )
 
     assert store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH) == []
+
+
+def test_next_ids_counts_every_phase(tmp_path):
+    store = _ok_setup(tmp_path)
+    store.add("F2", _finding(id="E-001", cell=1))
+    store.add("F3", _finding(id="E-002", cell=1))
+    store.add("F2", {"id": "H-001", "pillar": "hypothesis", "statement": "kenaikan musiman", "status": "unresolved", "value": 1, "unit": "count", "display": "1", "cell": 1, "artifact": "cells/001.out.txt", "dataset_hash": DATASET_HASH, "confidence": "low", "verified": False})
+
+    # E-002 sudah dipakai di F3, H-001 sudah dipakai di F2: nomor bebasnya 3 dan 2.
+    assert store.next_ids() == (3, 2)
