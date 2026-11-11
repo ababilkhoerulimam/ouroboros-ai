@@ -337,3 +337,26 @@ def test_next_ids_counts_every_phase(tmp_path):
 
     # E-002 sudah dipakai di F3, H-001 sudah dipakai di F2: nomor bebasnya 3 dan 2.
     assert store.next_ids() == (3, 2)
+
+
+def test_scientific_notation_artifact_matches_value(tmp_path):
+    # Cell 014 pada run 2026-11-11-ecd0b9 mencetak `-1.378457e+07` dari
+    # pandas, sementara model menulis value -13784572. Selisihnya derau
+    # representasi, bukan angka yang berbeda.
+    store = _ok_setup(tmp_path, text="diff_aug_vs_avg=-1.378457e+07\n")
+    store.add(
+        "F3",
+        _finding(value=-13784572, unit="IDR", display="-Rp 13,78 juta (-57,04%)"),
+    )
+
+    assert store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH) == []
+
+
+def test_wrong_value_is_still_rejected(tmp_path):
+    # Toleransi pembulatan setengah digit tidak boleh meloloskan angka lain.
+    store = _ok_setup(tmp_path, text="value=7\n")
+    store.add("F3", _finding(value=3, unit="count", display="3 pesanan"))
+
+    errors = store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH)
+
+    assert len(errors) == 1

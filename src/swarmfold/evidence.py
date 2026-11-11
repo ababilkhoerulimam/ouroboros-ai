@@ -635,8 +635,15 @@ def _display_number(display: str) -> tuple[float, float] | None:
 
 
 def _matches(numbers: list[float], target: float, tolerance: float) -> bool:
+    """Ada angka pada artefak yang sama dengan `target`.
+
+    Toleransi relatif 1e-6 menyerap derau representasi: cell 014 mencetak
+    `-1.378457e+07` sementara `value` ditulis `-13784572` karena model
+    menghitung ulang, selisih 1,5e-7 relatif. Salah angka yang sungguhan tetap
+    ditolak: 3 lawan 2,6 berbeda 13 persen.
+    """
     for number in numbers:
-        if abs(number - target) <= tolerance + abs(target) * 1e-9:
+        if abs(number - target) <= tolerance + abs(target) * 1e-6:
             return True
     return False
 
