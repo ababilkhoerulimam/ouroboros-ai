@@ -63,6 +63,18 @@ _JOIN_MIN_OVERLAP = 0.80
 _JOIN_MIN_DISTINCT = 2
 _JOIN_MAX_DISTINCT = 20_000
 
+#: Ambang tepi kelompok data. Kandidat join boleh lemah (cukup nama kolom sama),
+#: tetapi dua berkas baru dianggap satu kelompok bila nilai kuncinya benar
+#: beririsan dan kolomnya cukup berisi.
+_COMPONENT_MIN_OVERLAP = 0.80
+_COMPONENT_MIN_DISTINCT = 3
+#: Kolom bertanggal tidak boleh menjadi satu-satunya alasan dua berkas digabung:
+#: dua tabel penjualan berbeda sama-sama punya `tanggal` tanpa saling terkait.
+_DATE_NAME_RE = re.compile(
+    r"(tanggal|tgl|date|waktu|time|bulan|month|periode|period|tahun|year)",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class IngestedFile:
@@ -159,10 +171,12 @@ def ingest(paths: list[Path], run: RunPaths) -> IngestResult:
         )
         join_inputs.append((source.name, frame, distinct))
 
+    joins = _join_candidates(join_inputs)
     profile: dict[str, Any] = {
         "generated_at": utc_now(),
         "files": file_profiles,
-        "joins": _join_candidates(join_inputs),
+        "joins": joins,
+        "datasets": _datasets(file_profiles, joins),
         "warnings": warnings,
     }
     atomic_write_json(run.profile_file, profile)
@@ -502,3 +516,77 @@ def _join_candidates(
                         }
                     )
     return joins
+
+
+# --------------------------------------------------------------------------- #
+# Kelompok data (komponen terhubung)
+# --------------------------------------------------------------------------- #
+
+
+def _datasets(
+    files: list[dict[str, Any]], joins: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Kelompokkan berkas menjadi komponen terhubung lewat join yang kuat.
+
+    Sepuluh CSV yang tidak berbagi kunci bukan satu dataset yang rusak, tetapi
+    sepuluh dataset. Menggabungkannya menghasilkan join kosong dan angka nol
+    yang terlihat sah. Kelompok besar diberi nomor lebih dulu supaya `D1`
+    adalah kelompok yang paling layak dianalisis.
+    """
+    names = [str(item.get("name")) for item in files]
+    parent = {name: name for name in names}
+
+    def find(name: str) -> str:
+        root = name
+        while parent[root] != root:
+            root = parent[root]
+        while parent[name] != root:
+            parent[name], name = root, parent[name]
+        return root
+
+    keys: dict[str, set[str]] = {name: set() for name in names}
+    for join in joins:
+        left = str(join.get("left"))
+        right = str(join.get("right"))
+        if left not in parent or right not in parent:
+            continue
+        if float(join.get("overlap") or 0.0) < _COMPONENT_MIN_OVERLAP:
+            continue
+        distinct = min(
+            int(join.get("left_distinct") or 0), int(join.get("right_distinct") or 0)
+        )
+        if distinct < _COMPONENT_MIN_DISTINCT:
+            continue
+        left_columns = [str(column) for column in join.get("left_columns") or []]
+        right_columns = [str(column) for column in join.get("right_columns") or []]
+        if all(_DATE_NAME_RE.search(column) for column in left_columns + right_columns):
+            continue
+        left_root, right_root = find(left), find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+        keys[left].update(left_columns)
+        keys[right].update(right_columns)
+
+    rows = {str(item.get("name")): int(item.get("rows") or 0) for item in files}
+    order = {name: index for index, name in enumerate(names)}
+    groups: dict[str, list[str]] = {}
+    for name in names:
+        groups.setdefault(find(name), []).append(name)
+
+    members_list = list(groups.values())
+    members_list.sort(
+        key=lambda members: (
+            -len(members),
+            -sum(rows[name] for name in members),
+            order[members[0]],
+        )
+    )
+    return [
+        {
+            "id": f"D{index}",
+            "files": members,
+            "rows": sum(rows[name] for name in members),
+            "keys": sorted(set().union(*(keys[name] for name in members))),
+        }
+        for index, members in enumerate(members_list, start=1)
+    ]

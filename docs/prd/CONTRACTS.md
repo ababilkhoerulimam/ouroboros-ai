@@ -33,6 +33,47 @@ runs/<run_id>/
   done.json                  sentinel
 ```
 
+### `profile.json`
+
+Dibuat `ingest` tanpa model, lalu `triage` menambahkan satu kunci.
+
+```json
+{
+  "generated_at": "2026-11-10T10:00:00Z",
+  "files": [
+    {"name": "penjualan.csv", "format": "csv", "rows": 12, "cols": 5,
+     "sha256": "…", "bytes": 512, "columns": [{"name": "total", "dtype": "int64"}],
+     "candidate_keys": [{"columns": ["tanggal"], "unique_ratio": 1.0}]}
+  ],
+  "joins": [
+    {"left": "pesanan.csv", "right": "pelanggan.csv",
+     "left_columns": ["customer_id"], "right_columns": ["id"],
+     "overlap": 1.0, "left_distinct": 50, "right_distinct": 93,
+     "cardinality": "many_to_one", "fanout_risk": "none"}
+  ],
+  "datasets": [
+    {"id": "D1", "files": ["pesanan.csv", "pelanggan.csv"], "rows": 193,
+     "keys": ["customer_id", "id"]}
+  ],
+  "triage": {"mode": "full", "reasons": ["…"], "missing": []},
+  "warnings": ["…"]
+}
+```
+
+Aturan:
+
+- `joins` adalah **kandidat**, termasuk pasangan yang hanya kebetulan punya nama
+  kolom sama; `overlap` adalah bagian nilai kiri yang juga ada di kanan.
+- `datasets` adalah komponen terhubung dari kandidat yang kuat (`overlap ≥ 0,80`,
+  minimal 3 nilai berbeda, dan bukan pasangan kolom bertanggal semata). Berkas
+  tanpa kunci bersama menjadi dataset sendiri, bukan dibuang.
+- Berkas hanya boleh di-join di dalam satu `datasets`; join lintas dataset
+  menghasilkan tabel kosong atau fan-out.
+- `datasets` diurutkan: kelompok dengan berkas terbanyak lebih dulu, sehingga
+  `D1` adalah kelompok terbesar.
+- `triage.mode` ∈ `full | cleaning_only | insufficient`; `insufficient`
+  menghentikan run sebelum kernel dijalankan.
+
 ## 2. `status.json`
 
 Diperbarui setiap transisi state.

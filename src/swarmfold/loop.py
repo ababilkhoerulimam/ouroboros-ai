@@ -273,9 +273,23 @@ class AgentLoop:
             f"pack={self.settings.pack}",
             *[f"- {reason}" for reason in (self.triage.get("reasons") or [])],
             "",
-            instruction,
         ]
+        if len(self._datasets()) > 1:
+            lines.append(
+                "Analisis semua kelompok di atas, termasuk yang kecil. Join hanya di "
+                "dalam satu kelompok; jangan menggabungkan berkas lintas kelompok."
+            )
+            lines.append("")
+        lines.append(instruction)
         return "\n".join(lines)
+
+    def _datasets(self) -> list[dict[str, Any]]:
+        import json
+
+        if not self.paths.profile_file.exists():
+            return []
+        data = json.loads(self.paths.profile_file.read_text(encoding="utf-8"))
+        return [item for item in data.get("datasets") or [] if isinstance(item, dict)]
 
     def _profile_summary(self) -> str:
         import json
@@ -290,6 +304,16 @@ class AgentLoop:
                 f"- {item.get('name')}: {item.get('rows')} baris, {item.get('cols')} kolom, "
                 f"format {item.get('format')}"
             )
+        datasets = [item for item in data.get("datasets") or [] if isinstance(item, dict)]
+        if datasets:
+            rows.append("")
+            rows.append("Kelompok data (join hanya di dalam satu kelompok):")
+            for item in datasets:
+                members = ", ".join(str(name) for name in item.get("files") or [])
+                keys = ", ".join(str(key) for key in item.get("keys") or []) or "-"
+                rows.append(
+                    f"- {item.get('id')}: {members} — {item.get('rows')} baris, kunci {keys}"
+                )
         return "\n".join(rows) or "- tidak ada berkas"
 
     def _state_text(self) -> str:

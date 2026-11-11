@@ -155,6 +155,100 @@ def test_join_candidate_between_two_files(tmp_path: Path) -> None:
     assert join["fanout_risk"] == "none"
 
 
+def test_datasets_merge_files_sharing_a_key(tmp_path: Path) -> None:
+    left_path = tmp_path / "pesanan.csv"
+    right_path = tmp_path / "pelanggan.csv"
+
+    pd.DataFrame(
+        {
+            "customer_id": [f"C{index % 40}" for index in range(120)],
+            "total": np.arange(120, dtype=float),
+        }
+    ).to_csv(left_path, index=False)
+    pd.DataFrame(
+        {
+            "id": [f"C{index}" for index in range(93)],
+            "nama": [f"N{index}" for index in range(93)],
+        }
+    ).to_csv(right_path, index=False)
+
+    result = ingest([left_path, right_path], _run(tmp_path))
+    datasets = result.profile["datasets"]
+
+    assert len(datasets) == 1
+    assert datasets[0]["id"] == "D1"
+    assert datasets[0]["files"] == ["pesanan.csv", "pelanggan.csv"]
+    assert datasets[0]["rows"] == 213
+    assert datasets[0]["keys"] == ["customer_id", "id"]
+
+
+def test_datasets_keep_unrelated_files_apart(tmp_path: Path) -> None:
+    penjualan_path = tmp_path / "penjualan.csv"
+    catatan_path = tmp_path / "catatan.csv"
+
+    pd.DataFrame(
+        {"produk": ["Kopi", "Teh", "Roti"] * 5, "qty": list(range(15))}
+    ).to_csv(penjualan_path, index=False)
+    pd.DataFrame(
+        {"nama": ["Ani", "Budi", "Citra", "Dewi", "Eko"], "catatan": list("abcde")}
+    ).to_csv(catatan_path, index=False)
+
+    result = ingest([penjualan_path, catatan_path], _run(tmp_path))
+    datasets = result.profile["datasets"]
+
+    assert [item["id"] for item in datasets] == ["D1", "D2"]
+    assert [item["files"] for item in datasets] == [["penjualan.csv"], ["catatan.csv"]]
+    assert [item["keys"] for item in datasets] == [[], []]
+
+
+def test_datasets_ignore_same_name_column_without_overlap(tmp_path: Path) -> None:
+    left_path = tmp_path / "toko_a.csv"
+    right_path = tmp_path / "toko_b.csv"
+
+    pd.DataFrame(
+        {
+            "kota": ["Bandung", "Jakarta", "Surabaya", "Medan"] * 3,
+            "omzet": np.arange(12, dtype=float),
+        }
+    ).to_csv(left_path, index=False)
+    pd.DataFrame(
+        {
+            "kota": ["Makassar", "Semarang", "Denpasar", "Palembang"] * 3,
+            "omzet": np.arange(12, dtype=float) + 100,
+        }
+    ).to_csv(right_path, index=False)
+
+    result = ingest([left_path, right_path], _run(tmp_path))
+    datasets = result.profile["datasets"]
+
+    # Kandidat join tetap tercatat, tetapi isinya tidak beririsan sehingga
+    # kedua berkas bukan satu kelompok.
+    assert any(
+        join["left_columns"] == ["kota"] and join["overlap"] == 0.0
+        for join in result.profile["joins"]
+    )
+    assert len(datasets) == 2
+
+
+def test_datasets_do_not_merge_on_date_column_alone(tmp_path: Path) -> None:
+    left_path = tmp_path / "januari.csv"
+    right_path = tmp_path / "februari.csv"
+    dates = [f"2025-01-{day:02d}" for day in range(1, 13)]
+
+    pd.DataFrame({"tanggal": dates, "total": np.arange(12, dtype=float)}).to_csv(
+        left_path, index=False
+    )
+    pd.DataFrame(
+        {"tanggal": dates, "total": np.arange(12, dtype=float) + 500}
+    ).to_csv(right_path, index=False)
+
+    result = ingest([left_path, right_path], _run(tmp_path))
+    datasets = result.profile["datasets"]
+
+    assert len(datasets) == 2
+    assert [item["files"] for item in datasets] == [["januari.csv"], ["februari.csv"]]
+
+
 def test_input_files_are_read_only_and_hashed(tmp_path: Path) -> None:
     path = tmp_path / "data.csv"
     path.write_text("a,b\n1,2\n3,4\n", encoding="utf-8")
