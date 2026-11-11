@@ -34,11 +34,16 @@ versi produk tidak berubah diam-diam ketika skill global diperbarui.
 | Evidence and Validation Gates | `phases/*.md` + `evidence.md` | salin sebagai kriteria selesai fase | |
 | State Updates + sinkronisasi Notion | dihapus | buang | privasi; lihat konflik K5 |
 | `references/metric-contract.md` | `phases/F1.md` | salin | grain, denominator, validasi metrik |
-| `references/analysis-methods.md` | `phases/F2.md`, `phases/F4.md` | salin sebagian | tren, konsentrasi, cohort, funnel |
+| `references/analysis-methods.md` | `phases/F2.md`, `phases/F4.md`, `phases/F1.md` | salin sebagian | tren, konsentrasi, cohort, funnel, tipologi missing |
 | `references/root-cause-and-decomposition.md` | `phases/F3.md` | salin | PVM, Adtributor, residual nol |
-| `references/statistical-traps-and-guardrails.md` | `phases/F6.md` + `phases/F3.md` | salin | Simpson, denominator, sampel kecil |
+| `references/statistical-traps-and-guardrails.md` | `phases/F6.md` + `phases/F3.md` | salin | Simpson, denominator, sampel kecil, multiplicity, survivorship, regression to the mean, heavy tail, bootstrap CI, effect size |
 | `references/visualization-and-delivery.md` | `style.md` (bagian chart) | salin | label langsung, sumbu jujur, tanpa chartjunk |
 | `references/interactive-analysis.md` | `style.md` | ubah | template 4-pillar dipertahankan, aturan numbering diganti |
+
+Bagian yang sengaja tidak diport: SRM dan base-rate fallacy (butuh eksperimen
+terkontrol atau model klasifikasi, di luar lingkup v1), `scripts/decompose_driver.py`
+(produk memakai cell sendiri dan validator `evidence`), serta
+`ANALYSIS_STATE`/Notion sync (produk punya `status.json` dan `phase.json`).
 
 ### coding-rules
 
