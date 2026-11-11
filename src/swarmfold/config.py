@@ -12,6 +12,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_MODEL = "ag/gemini-3.8-flash-high"
+#: Pack doktrin default. Versi awal fokus bisnis/UMKM; pack lain menyusul.
+DEFAULT_PACK = "business"
+DEFAULT_AUDIENCE = "pemilik usaha kecil"
+DEFAULT_DOMAIN = "usaha"
 
 
 class ConfigError(RuntimeError):
@@ -41,6 +45,9 @@ class Settings:
     stall_cells: int
     deepdive_every: int
     data_root: Path
+    pack: str = DEFAULT_PACK
+    audience: str = DEFAULT_AUDIENCE
+    domain: str = DEFAULT_DOMAIN
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -58,6 +65,9 @@ class Settings:
             stall_cells=_env_int(source, "SWARMFOLD_STALL_CELLS", 3),
             deepdive_every=_env_int(source, "SWARMFOLD_DEEPDIVE_EVERY", 10),
             data_root=data_root,
+            pack=(source.get("SWARMFOLD_PACK") or "").strip() or DEFAULT_PACK,
+            audience=(source.get("SWARMFOLD_AUDIENCE") or "").strip() or DEFAULT_AUDIENCE,
+            domain=(source.get("SWARMFOLD_DOMAIN") or "").strip() or DEFAULT_DOMAIN,
         )
 
     def require_model(self) -> tuple[str, str]:
@@ -82,6 +92,8 @@ class Settings:
             "cell_timeout_s": self.cell_timeout_s,
             "stall_cells": self.stall_cells,
             "deepdive_every": self.deepdive_every,
+            "pack": self.pack,
+            "domain": self.domain,
             "base_url_configured": self.base_url is not None,
         }
 

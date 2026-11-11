@@ -244,6 +244,40 @@ def test_state_block_shape(tmp_path):
     assert str(tmp_path) not in block
 
 
+def test_default_prompt_library_uses_business_pack():
+    library = PromptLibrary()
+
+    assert library.pack == "business"
+    assert library.audience == "pemilik usaha kecil"
+    assert library.system().strip()
+
+
+def test_pack_overrides_files_and_renders_variables(tmp_path):
+    base = tmp_path / "prompts"
+    (base / "phases").mkdir(parents=True)
+    (base / "system.md").write_text("Sistem untuk {{audience}} di {{domain}}.\n", encoding="utf-8")
+    pack = base / "packs" / "uji"
+    (pack / "phases").mkdir(parents=True)
+    (pack / "pack.json").write_text('{"audience": "analis data"}', encoding="utf-8")
+    (pack / "phases" / "F2.md").write_text("# F2 untuk {{audience}}\n", encoding="utf-8")
+
+    library = PromptLibrary(base, pack="uji", domain="riset")
+
+    assert library.audience == "analis data"
+    assert library.domain == "riset"
+    assert library.system() == "Sistem untuk analis data di riset.\n"
+    assert library.phase("F2") == "# F2 untuk analis data\n"
+    with pytest.raises(FileNotFoundError):
+        library.phase("F3")
+
+
+def test_unknown_pack_is_rejected(tmp_path):
+    with pytest.raises(ValueError) as exc:
+        PromptLibrary(tmp_path, pack="tidak-ada")
+
+    assert "tidak-ada" in str(exc.value)
+
+
 def test_prompt_library_loads_and_raises_for_missing(tmp_path):
     library = PromptLibrary()
     assert (library.dir / "system.md").is_file()

@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .config import DEFAULT_AUDIENCE, DEFAULT_DOMAIN, DEFAULT_PACK
 from .evidence import EvidenceStore
 from .runtime import RunPaths, atomic_write_json, read_json
 
@@ -291,23 +292,46 @@ def _default_prompts_dir() -> Path:
 
 
 class PromptLibrary:
-    """Muat berkas prompt dari repo, bukan dari skill global di mesin."""
+    """Muat berkas prompt, dengan pack doktrin sebagai lapisan override.
 
-    def __init__(self, prompts_dir: Path | None = None):
+    Urutan pencarian: ``packs/<pack>/<berkas>`` lalu ``<prompts>/<berkas>``.
+    Jadi pack hanya perlu memuat berkas yang berbeda; sisanya mewarisi prompt
+    dasar. ``{{audience}}`` dan ``{{domain}}`` dirender saat berkas dibaca.
+    """
+
+    def __init__(
+        self,
+        prompts_dir: Path | None = None,
+        *,
+        pack: str = DEFAULT_PACK,
+        audience: str | None = None,
+        domain: str | None = None,
+    ):
         self.dir = Path(prompts_dir) if prompts_dir is not None else _default_prompts_dir()
+        self.pack = (pack or DEFAULT_PACK).strip() or DEFAULT_PACK
+        self.pack_dir = self.dir / "packs" / self.pack
+        meta = read_json(self.pack_dir / "pack.json", {})
+        if not isinstance(meta, dict):
+            meta = {}
+        if self.pack != DEFAULT_PACK and not self.pack_dir.is_dir():
+            raise ValueError(
+                f"pack tidak dikenal: {self.pack!r}; tidak ada direktori {self.pack_dir}"
+            )
+        self.audience = str(audience or meta.get("audience") or DEFAULT_AUDIENCE)
+        self.domain = str(domain or meta.get("domain") or DEFAULT_DOMAIN)
 
     def system(self) -> str:
-        return self._read(self.dir / "system.md")
+        return self._load("system.md")
 
     def phase(self, phase: str) -> str:
         if phase not in PHASES:
             raise ValueError(f"fase tidak dikenal: {phase!r}; pilih {_names(PHASES)}")
-        return self._read(self.dir / "phases" / f"{phase}.md")
+        return self._load(f"phases/{phase}.md")
 
     def module(self, name: str) -> str:
         if name not in _MODULES:
             raise ValueError(f"modul tidak dikenal: {name!r}; pilih {_names(_MODULES)}")
-        return self._read(self.dir / f"{name}.md")
+        return self._load(f"{name}.md")
 
     def state_block(
         self,
@@ -338,9 +362,12 @@ class PromptLibrary:
             lines.append(f"phases_done={','.join(phase_completed)}")
         return "\n".join(lines)
 
-    @staticmethod
-    def _read(path: Path) -> str:
-        try:
-            return path.read_text(encoding="utf-8")
-        except FileNotFoundError as exc:
-            raise FileNotFoundError(f"prompt tidak ditemukan: {path}") from exc
+    def _load(self, relative: str) -> str:
+        """Baca berkas prompt dengan override pack, lalu render variabel."""
+        for candidate in (self.pack_dir / relative, self.dir / relative):
+            if candidate.is_file():
+                return self._render(candidate.read_text(encoding="utf-8"))
+        raise FileNotFoundError(f"prompt tidak ditemukan: {self.dir / relative}")
+
+    def _render(self, text: str) -> str:
+        return text.replace("{{audience}}", self.audience).replace("{{domain}}", self.domain)

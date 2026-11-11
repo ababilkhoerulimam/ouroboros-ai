@@ -75,7 +75,11 @@ class AgentLoop:
         self.brief = brief or Brief()
         self.store = store or EvidenceStore(paths)
         self.controller = controller or PhaseController(paths, self.store)
-        self.prompts = prompts or PromptLibrary()
+        self.prompts = prompts or PromptLibrary(
+            pack=self.settings.pack,
+            audience=self.settings.audience,
+            domain=self.settings.domain,
+        )
         self.status = StatusStore(paths)
         self.cells_run = 0
         self.stalls = 0
