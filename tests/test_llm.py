@@ -77,7 +77,7 @@ def test_tools_dikirim_hanya_saat_diberikan() -> None:
     client.chat([{"role": "user", "content": "tulis cell"}], tools=tools)
 
     assert bodies[0]["tools"] == tools
-    assert bodies[0]["tool_choice"] == "auto"
+    assert bodies[0]["tool_choice"] == "required"
 
 
 def test_reasoning_content_tetap_terpisah_dari_content() -> None:

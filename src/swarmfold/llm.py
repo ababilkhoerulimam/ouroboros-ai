@@ -114,7 +114,10 @@ class ModelClient:
         }
         if tools:
             payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+            # Loop ini digerakkan tool: turn tanpa tool call tidak menambah apa pun,
+            # dan model yang memilih menjawab prosa akan menghentikan run. Gateway
+            # OpenAI-compatible menerima "required", jadi minta tool secara eksplisit.
+            payload["tool_choice"] = "required"
 
         body = json.dumps(payload, ensure_ascii=False)
         headers = {

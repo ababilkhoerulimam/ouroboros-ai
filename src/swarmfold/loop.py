@@ -592,6 +592,11 @@ class AgentLoop:
         for problem in problems:
             self.errors.append(f"evidence: {problem}")
             self.status.warn(problem)
+        # Kegagalan model tidak boleh hilang dari artefak: tanpa ini run berhenti
+        # dengan status partial tanpa satu pun jejak alasannya di status.json.
+        for error in self.errors:
+            if not error.startswith("evidence: "):
+                self.status.warn(error)
 
         status = toolbox.ctx.finish_status or "partial"
         if problems or toolbox.ctx.fatal:
