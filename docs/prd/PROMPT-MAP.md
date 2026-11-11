@@ -150,3 +150,24 @@ model mengikuti aturan yang saling bertentangan).
   manual dan dicatat di dokumen ini.
 - Jika sebuah aturan produk tidak ada di sumber mana pun, tandai sebagai
   `origin: product` agar jelas mana yang keputusan baru.
+
+## 8. Pack doktrin
+
+Pack adalah lapisan override di `prompts/packs/<pack>/`. Berkas di dalamnya
+menggantikan berkas bernama sama di `prompts/`, sisanya mewarisi prompt dasar
+(`PromptLibrary._load`). Dua pack saat ini:
+
+| Pack | Dipilih untuk | Mengganti | Mewarisi |
+|---|---|---|---|
+| `business` | data dengan nominal + tanggal/entitas | tidak ada (default) | semua |
+| `generic` | data dengan ukuran + pembanding, tanpa sinyal bisnis | `system.md`, `phases/F1..F5.md`, `phases/F7.md` | `loop.md`, `style.md`, `evidence.md`, `tools.md`, `deepdive.md`, `phases/F6.md`, `report.md` |
+
+`generic` menulis ulang doktrin yang bergantung pada pendapatan: tabel metrik F1
+menjadi tabel peran kolom, F2 menjadi profil distribusi dan perbandingan kelompok,
+F3 menjadi dekomposisi jumlah/komposisi/level, F4 menjadi cohort entitas dan funnel
+tahap, F5 menjadi skenario dalam satuan data sendiri, F7 menjadi keputusan yang
+menggerakkan ukuran terukur. F6 tidak diubah karena isinya audit statistik, bukan
+doktrin bisnis.
+
+Biaya token pack `generic` setara pack `business`: berkas pengganti berukuran
+sebanding, dan tidak ada fase yang memuat dua versi sekaligus.

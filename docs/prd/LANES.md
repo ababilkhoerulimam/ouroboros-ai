@@ -50,6 +50,20 @@ tebakan dan akan melompat ke F7 terlalu dini.
 | F6 | Penantang | Temuan mana yang tidak tahan uji? | `evidence/F6.json` | tidak |
 | F7 | Writer | Bagaimana menjelaskan ini ke pemilik usaha? | `laporan.md` | tidak |
 
+Tabel di atas menulis pertanyaan untuk pack `business`. Pack doktrin menentukan isi
+tiap fase, bukan hanya gaya bahasanya. Pack `generic` (fallback untuk data tanpa
+sinyal bisnis) memakai pertanyaan berikut pada slot yang sama:
+
+| Fase | Pack `business` | Pack `generic` |
+|---|---|---|
+| F2 | Apa yang berubah, di segmen mana? | Apa isi data, dan di kelompok mana berbeda? |
+| F3 | Kenapa berubah (volume/mix/rate)? | Kenapa berbeda (jumlah, komposisi, level)? |
+| F4 | Siapa bertahan, di tahap mana putus? | Entitas mana yang berulang, di tahap mana berhenti? |
+| F5 | Kalau dibiarkan jadi apa? | Kalau dibiarkan jadi apa, dalam satuan data itu sendiri? |
+
+F1 dan F6 tetap: kualitas data dan audit temuan tidak bergantung pada pack. F7 tetap
+menulis laporan, dengan struktur dan audiens dari pack.
+
 ### F1 — Data Reality (blocking)
 
 - Inventaris file, deteksi tipe, hash.

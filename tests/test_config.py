@@ -37,3 +37,9 @@ def test_public_dict_has_pack_without_secret() -> None:
     assert public["pack"] == "business"
     assert public["domain"] == "usaha"
     assert "kunci-uji" not in str(public)
+
+
+def test_pack_is_forced_only_when_env_sets_it() -> None:
+    assert Settings.from_env({}).pack_forced is False
+    assert Settings.from_env({"SWARMFOLD_PACK": "generic"}).pack_forced is True
+    assert Settings.from_env({"SWARMFOLD_PACK": "business"}).pack_forced is True

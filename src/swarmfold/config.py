@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_MODEL = "ag/gemini-3.8-flash-high"
-#: Pack doktrin default. Versi awal fokus bisnis/UMKM; pack lain menyusul.
+#: Pack doktrin yang dipakai bila triage tidak punya pilihan lain. Data tanpa
+#: sinyal bisnis dipindahkan triage ke pack ``generic``.
 DEFAULT_PACK = "business"
 DEFAULT_AUDIENCE = "pemilik usaha kecil"
 DEFAULT_DOMAIN = "usaha"
@@ -48,6 +49,9 @@ class Settings:
     pack: str = DEFAULT_PACK
     audience: str = DEFAULT_AUDIENCE
     domain: str = DEFAULT_DOMAIN
+    #: True bila operator mengunci pack lewat environment; triage tidak boleh
+    #: menggantinya. False berarti pack dipilih triage per data.
+    pack_forced: bool = False
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -56,6 +60,7 @@ class Settings:
         api_key = (source.get("SWARMFOLD_API_KEY") or "").strip() or None
         model = (source.get("SWARMFOLD_MODEL") or "").strip() or DEFAULT_MODEL
         data_root = Path((source.get("SWARMFOLD_DATA_ROOT") or "./runs").strip())
+        pack = (source.get("SWARMFOLD_PACK") or "").strip()
         return cls(
             api_key=api_key,
             base_url=base_url,
@@ -65,9 +70,10 @@ class Settings:
             stall_cells=_env_int(source, "SWARMFOLD_STALL_CELLS", 3),
             deepdive_every=_env_int(source, "SWARMFOLD_DEEPDIVE_EVERY", 10),
             data_root=data_root,
-            pack=(source.get("SWARMFOLD_PACK") or "").strip() or DEFAULT_PACK,
+            pack=pack or DEFAULT_PACK,
             audience=(source.get("SWARMFOLD_AUDIENCE") or "").strip() or DEFAULT_AUDIENCE,
             domain=(source.get("SWARMFOLD_DOMAIN") or "").strip() or DEFAULT_DOMAIN,
+            pack_forced=bool(pack),
         )
 
     def require_model(self) -> tuple[str, str]:

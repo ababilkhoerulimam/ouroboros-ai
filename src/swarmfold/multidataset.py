@@ -126,6 +126,8 @@ def run_multi(
     StatusStore(run).update(
         state="done" if done["status"] in {"ok", "partial"} else "failed",
         phase="F7",
+        mode="multi_dataset",
+        pack=done["pack"],
         cell=cells,
         counts={"cells": cells, "evidence": evidence, "charts": charts},
         datasets=[
@@ -220,9 +222,13 @@ def build_done(
 
     completed_per_unit: list[set[str]] = []
     mismatches: list[str] = []
+    packs: set[str] = set()
     for unit in units:
         done = read_json(unit.paths.done_file, {}) or {}
         completed_per_unit.append(set(done.get("phases_completed") or []))
+        unit_pack = str(done.get("pack") or "")
+        if unit_pack:
+            packs.add(unit_pack)
         verification = done.get("verification")
         if isinstance(verification, dict):
             for item in verification.get("mismatches") or []:
@@ -239,7 +245,7 @@ def build_done(
     return {
         "status": status,
         "mode": "multi_dataset",
-        "pack": pack,
+        "pack": next(iter(packs)) if len(packs) == 1 else ("mixed" if packs else pack),
         "datasets": [
             {
                 "id": unit.dataset.get("id"),

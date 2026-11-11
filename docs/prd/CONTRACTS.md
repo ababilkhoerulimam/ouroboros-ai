@@ -55,7 +55,7 @@ Dibuat `ingest` tanpa model, lalu `triage` menambahkan satu kunci.
     {"id": "D1", "files": ["pesanan.csv", "pelanggan.csv"], "rows": 193,
      "keys": ["customer_id", "id"]}
   ],
-  "triage": {"mode": "full", "reasons": ["…"], "missing": []},
+  "triage": {"mode": "full", "reasons": ["…"], "missing": [], "pack": "business"},
   "warnings": ["…"]
 }
 ```
@@ -73,6 +73,11 @@ Aturan:
   `D1` adalah kelompok terbesar.
 - `triage.mode` ∈ `full | cleaning_only | insufficient`; `insufficient`
   menghentikan run sebelum kernel dijalankan.
+- `triage.pack` ∈ `business | generic` adalah pilihan deterministik triage: data
+  dengan nominal + tanggal/entitas memakai `business`; data dengan ukuran angka +
+  pembanding (tanggal atau kategori) memakai `generic`. Nilai ini hanya saran;
+  `SWARMFOLD_PACK` (via `Settings.pack_forced`) menimpanya, dan pack efektif
+  dicatat di `status.json` dan `done.json`.
 
 ### Run multi-kelompok
 
@@ -268,6 +273,10 @@ dan `laporan.md` versi "data belum siap" atau "analisis terhenti".
 Run multi-kelompok memakai `mode: "multi_dataset"` dan menambahkan `datasets[]`
 seperti di §1; `deliverables.notebook` dan `clean_data` berupa daftar path
 relatif terhadap akar run.
+
+`pack` adalah pack efektif yang dipakai run. Pada run multi-kelompok nilainya
+`mixed` bila unit memilih pack berbeda; pack tiap unit tetap ada di
+`datasets/<id>/done.json`.
 
 ## 8. Slot laporan
 

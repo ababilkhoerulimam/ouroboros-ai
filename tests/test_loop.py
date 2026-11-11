@@ -4,7 +4,7 @@ import json
 from dataclasses import replace
 
 from conftest import ScriptedModel, finish, run_cell, tool_turn
-from synthetic import tulis_catatan
+from synthetic import tulis_catatan, tulis_pengukuran
 
 from swarmfold.ingest import ingest
 from swarmfold.loop import AgentLoop, Brief
@@ -177,8 +177,68 @@ def test_business_profile_records_full_mode(run: RunPaths, settings) -> None:
     loop.run()
 
     assert loop.mode == "full"
+    assert loop.pack == "business"
     assert read_json(run.profile_file)["triage"]["mode"] == "full"
+    assert read_json(run.profile_file)["triage"]["pack"] == "business"
     assert read_json(run.status_file)["mode"] == "full"
+    assert read_json(run.status_file)["pack"] == "business"
+
+
+def test_generic_data_selects_generic_pack(tmp_path, settings) -> None:
+    class Capturing(ScriptedModel):
+        def __init__(self) -> None:
+            super().__init__([tool_turn(finish("blocked", "uji pack"))])
+            self.seen: list[dict] = []
+
+        def chat(self, messages, tools=None):
+            self.seen = list(messages)
+            return super().chat(messages, tools)
+
+    paths = _run_dari(
+        tmp_path, settings, [tulis_pengukuran(tmp_path / "ukur.csv")], "2026-01-01-ukur"
+    )
+    model = Capturing()
+    loop = AgentLoop(paths, settings, model, Brief())
+    loop.run()
+
+    assert loop.mode == "full"
+    assert loop.pack == "generic"
+    assert loop.prompts.audience == "pembaca tanpa latar statistik"
+    assert read_json(paths.profile_file)["triage"]["pack"] == "generic"
+    assert read_json(paths.status_file)["pack"] == "generic"
+    assert read_json(paths.done_file)["pack"] == "generic"
+    system = model.seen[0]["content"]
+    assert "tabular dataset" in system
+    assert "small-business" not in system
+
+
+def test_generic_pack_keeps_operator_persona(tmp_path, settings) -> None:
+    paths = _run_dari(
+        tmp_path, settings, [tulis_pengukuran(tmp_path / "ukur.csv")], "2026-01-01-persona"
+    )
+    custom = replace(settings, audience="analis laboratorium", domain="laboratorium")
+    loop = AgentLoop(
+        paths, custom, ScriptedModel([tool_turn(finish("blocked", "uji"))]), Brief()
+    )
+    loop.run()
+
+    assert loop.pack == "generic"
+    assert loop.prompts.audience == "analis laboratorium"
+    assert loop.prompts.domain == "laboratorium"
+
+
+def test_forced_pack_wins_over_triage(tmp_path, settings) -> None:
+    paths = _run_dari(
+        tmp_path, settings, [tulis_pengukuran(tmp_path / "ukur.csv")], "2026-01-01-paksa"
+    )
+    forced = replace(settings, pack="business", pack_forced=True)
+    loop = AgentLoop(
+        paths, forced, ScriptedModel([tool_turn(finish("blocked", "uji"))]), Brief()
+    )
+    loop.run()
+
+    assert loop.pack == "business"
+    assert read_json(paths.done_file)["pack"] == "business"
 
 
 def test_cleaning_mode_stops_after_f1(tmp_path, settings) -> None:

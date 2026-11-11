@@ -7,15 +7,16 @@ bahwa data kosong.
 
 Verdict yang dihasilkan:
 
-- ``full`` — ada sinyal bisnis (nominal + tanggal/entitas); jalankan F1-F7.
+- ``full`` — ada sinyal bisnis (nominal + tanggal/entitas) atau setidaknya satu
+  ukuran angka dengan pembanding (tanggal atau kategori); jalankan F1-F7.
 - ``cleaning_only`` — data bisa dirapikan tetapi tidak cukup untuk analisis;
   F1 lalu laporan kualitas data, tanpa F2-F6.
 - ``insufficient`` — baris/kolom terlalu sedikit atau kosong; laporan
   "data belum siap" tanpa menjalankan kernel.
 
-Pack doktrin belum dipilih di sini: versi ini selalu memakai pack dari
-``Settings`` (default ``business``). Pemilihan pack generic menyusul bersama
-pack-nya, supaya tidak ada pack yang dirujuk tetapi belum ada.
+Triage juga memilih pack doktrin. Data dengan sinyal bisnis memakai ``business``;
+data yang hanya punya ukuran dan pembanding memakai ``generic``. Pilihan ini
+hanya saran: ``Settings.pack_forced`` (env ``SWARMFOLD_PACK``) menimpanya.
 """
 
 from __future__ import annotations
@@ -29,9 +30,14 @@ MODE_FULL = "full"
 MODE_CLEANING = "cleaning_only"
 MODE_INSUFFICIENT = "insufficient"
 
+PACK_BUSINESS = "business"
+PACK_GENERIC = "generic"
+
 MIN_ROWS = 3
 MIN_COLS = 2
 NOMINAL_MEDIAN = 100.0
+#: Kolom kategorikal di atas batas ini terlalu pecah untuk dibandingkan langsung.
+MAX_LEVELS = 50
 
 _DATE_HINTS = (
     "tanggal",
@@ -91,9 +97,15 @@ class Triage:
     mode: str
     reasons: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
+    pack: str = PACK_BUSINESS
 
     def as_dict(self) -> dict[str, Any]:
-        return {"mode": self.mode, "reasons": list(self.reasons), "missing": list(self.missing)}
+        return {
+            "mode": self.mode,
+            "reasons": list(self.reasons),
+            "missing": list(self.missing),
+            "pack": self.pack,
+        }
 
 
 def _norm(name: Any) -> str:
@@ -140,6 +152,30 @@ def _has_entity(column: dict[str, Any]) -> bool:
     return any(hint in name for hint in _ENTITY_HINTS)
 
 
+def _is_measure(column: dict[str, Any]) -> bool:
+    """Kolom angka yang bisa diukur: bukan identifier, tidak konstan."""
+    if not _is_numeric(column):
+        return False
+    if _ID_TOKEN.search(_norm(column.get("name"))):
+        return False
+    distinct = column.get("distinct")
+    if isinstance(distinct, int) and not isinstance(distinct, bool) and distinct < 2:
+        return False
+    return True
+
+
+def _is_dimension(column: dict[str, Any]) -> bool:
+    """Kolom kategorikal dengan nilai berulang yang bisa memecah kelompok."""
+    if _is_numeric(column) or _has_date(column):
+        return False
+    if _ID_TOKEN.search(_norm(column.get("name"))):
+        return False
+    distinct = column.get("distinct")
+    if isinstance(distinct, int) and not isinstance(distinct, bool):
+        return 2 <= distinct <= MAX_LEVELS
+    return len({str(sample) for sample in column.get("samples") or []}) >= 2
+
+
 def triage_profile(profile: dict[str, Any]) -> Triage:
     """Nilai satu profile ingest; tidak pernah melempar untuk input wajar."""
     files = profile.get("files") if isinstance(profile, dict) else None
@@ -154,15 +190,25 @@ def triage_profile(profile: dict[str, Any]) -> Triage:
     ]
 
     if rows < MIN_ROWS or cols < MIN_COLS or not columns:
+        # Tidak ada analisis yang berjalan, tetapi pack tetap dicatat supaya
+        # `done.json` tidak menyebut doktrin yang tidak pernah dipakai.
+        pack = (
+            PACK_BUSINESS
+            if any(_has_nominal(column) for column in columns)
+            else PACK_GENERIC
+        )
         return Triage(
             MODE_INSUFFICIENT,
             [f"data terlalu kecil: {rows} baris, {cols} kolom (minimum {MIN_ROWS} x {MIN_COLS})"],
             ["minimal 3 baris data dan 2 kolom"],
+            pack,
         )
 
     nominal = [column for column in columns if _has_nominal(column)]
     dated = [column for column in columns if _has_date(column)]
     entity = [column for column in columns if _has_entity(column)]
+    measures = [column for column in columns if _is_measure(column)]
+    dimensions = [column for column in columns if _is_dimension(column)]
 
     missing: list[str] = []
     if not nominal:
@@ -178,17 +224,30 @@ def triage_profile(profile: dict[str, Any]) -> Triage:
             f"tanggal: {', '.join(_names(dated)) or 'tidak ada'}",
             f"entitas: {', '.join(_names(entity)) or 'tidak ada'}",
         ]
-        return Triage(MODE_FULL, reasons, [])
+        return Triage(MODE_FULL, reasons, [], PACK_BUSINESS)
+
+    if measures and (dated or dimensions):
+        reasons = [
+            f"ukuran: {', '.join(_names(measures))}",
+            f"pembanding: {', '.join(_names(dated or dimensions))}",
+        ]
+        return Triage(MODE_FULL, reasons, [], PACK_GENERIC)
+
+    if measures:
+        reasons = ["angka ada, tetapi tidak ada pembanding: butuh kolom tanggal atau kategori"]
+        reasons.extend(missing)
+        return Triage(MODE_CLEANING, reasons, missing, PACK_GENERIC)
 
     if nominal or dated or entity:
         reasons = ["sinyal bisnis tidak lengkap untuk analisis penuh"]
         reasons.extend(missing)
-        return Triage(MODE_CLEANING, reasons, missing)
+        return Triage(MODE_CLEANING, reasons, missing, PACK_GENERIC)
 
     return Triage(
         MODE_CLEANING,
         ["tidak ada sinyal bisnis (nominal, tanggal, atau entitas)"],
         missing,
+        PACK_GENERIC,
     )
 
 

@@ -1,0 +1,6 @@
+{
+  "name": "generic",
+  "audience": "pembaca tanpa latar statistik",
+  "domain": "data umum",
+  "description": "Doktrin EDA untuk data tabular umum: distribusi, hubungan antar kolom, kelompok, dan kualitas data. Fallback saat data tidak punya sinyal bisnis."
+}

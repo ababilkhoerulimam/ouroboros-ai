@@ -86,3 +86,34 @@ def tulis_catatan(path: Path) -> Path:
         writer.writerow(["nama", "catatan"])
         writer.writerows(CATATAN)
     return path
+
+
+#: (tanggal, sensor, suhu, status) — data pengukuran, bukan data bisnis.
+PENGUKURAN: tuple[tuple[str, str, float, str], ...] = (
+    ("2025-01-05", "S-01", 21.4, "normal"),
+    ("2025-01-19", "S-02", 22.1, "normal"),
+    ("2025-02-02", "S-01", 23.0, "normal"),
+    ("2025-02-16", "S-02", 24.6, "tinggi"),
+    ("2025-03-02", "S-01", 20.8, "normal"),
+    ("2025-03-16", "S-02", 25.2, "tinggi"),
+    ("2025-04-06", "S-01", 22.7, "normal"),
+    ("2025-04-20", "S-02", 23.9, "normal"),
+    ("2025-05-04", "S-01", 21.9, "normal"),
+    ("2025-05-18", "S-02", 26.1, "tinggi"),
+    ("2025-06-01", "S-01", 22.3, "normal"),
+    ("2025-06-15", "S-02", 24.8, "tinggi"),
+)
+
+
+def tulis_pengukuran(path: Path) -> Path:
+    """Tulis CSV non-bisnis yang tetap layak dianalisis: ukuran + pembanding.
+
+    Tidak ada kolom nominal, pelanggan, atau pesanan; triage harus memilih pack
+    `generic`, bukan `business`.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["waktu", "sensor", "suhu", "status"])
+        writer.writerows(PENGUKURAN)
+    return path

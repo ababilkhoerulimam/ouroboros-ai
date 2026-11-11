@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from .config import Settings
+from .config import DEFAULT_AUDIENCE, DEFAULT_DOMAIN, Settings
 from .evidence import EvidenceStore, deepdive_due, next_deepdive_path
 from .kernel import KernelSession, NotebookWriter
 from .llm import ModelClient, ModelError, ModelTurn
@@ -90,6 +90,9 @@ class AgentLoop:
             audience=self.settings.audience,
             domain=self.settings.domain,
         )
+        self._prompts_given = prompts is not None
+        #: Pack efektif run ini. Bisa diganti triage setelah profil dibaca.
+        self.pack = self.prompts.pack
         self.status = StatusStore(paths)
         self.cells_run = 0
         self.stalls = 0
@@ -280,7 +283,7 @@ class AgentLoop:
             "",
             "## Mode run",
             f"mode={self.mode}",
-            f"pack={self.settings.pack}",
+            f"pack={self.pack}",
             *[f"- {reason}" for reason in (self.triage.get("reasons") or [])],
             "",
         ]
@@ -488,8 +491,26 @@ class AgentLoop:
         atomic_write_json(self.paths.profile_file, profile)
         self.mode = result.mode
         self.triage = result.as_dict()
-        self.status.update(mode=result.mode, pack=self.settings.pack)
+        self._select_pack(result)
+        self.status.update(mode=result.mode, pack=self.pack)
         return result
+
+    def _select_pack(self, triage: Triage) -> None:
+        """Pakai pack pilihan triage kecuali operator mengunci pack atau
+        ``PromptLibrary`` disuntikkan pemanggil (tes memakai prompt sendiri)."""
+        if self.settings.pack_forced or self._prompts_given:
+            return
+        chosen = triage.pack or self.settings.pack
+        if chosen == self.pack:
+            return
+        # Persona default milik pack lama tidak boleh ikut pindah ke pack baru;
+        # hanya persona yang benar-benar diisi operator yang dipertahankan.
+        audience = (
+            self.settings.audience if self.settings.audience != DEFAULT_AUDIENCE else None
+        )
+        domain = self.settings.domain if self.settings.domain != DEFAULT_DOMAIN else None
+        self.prompts = PromptLibrary(pack=chosen, audience=audience, domain=domain)
+        self.pack = self.prompts.pack
 
     def _finish_insufficient(self, triage: Triage) -> RunOutcome:
         """Data terlalu kecil: laporan deterministik tanpa memanggil model."""
@@ -513,7 +534,7 @@ class AgentLoop:
             {
                 "status": "failed",
                 "mode": triage.mode,
-                "pack": self.settings.pack,
+                "pack": self.pack,
                 "phases_completed": [],
                 "phases_skipped": [],
                 "deliverables": {
@@ -581,7 +602,7 @@ class AgentLoop:
         done = {
             "status": status,
             "mode": self.mode,
-            "pack": self.settings.pack,
+            "pack": self.pack,
             "phases_completed": [name for name in PHASES if self.controller.is_completed(name)],
             "phases_skipped": self._skipped(),
             "deliverables": {
@@ -651,7 +672,7 @@ class AgentLoop:
             {
                 "status": "failed",
                 "mode": self.mode,
-                "pack": self.settings.pack,
+                "pack": self.pack,
                 "phases_completed": [],
                 "phases_skipped": [],
                 "deliverables": {},

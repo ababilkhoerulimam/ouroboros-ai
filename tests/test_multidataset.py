@@ -174,6 +174,29 @@ def test_done_lists_each_dataset_deliverable(run_dua_berkas: RunPaths) -> None:
     assert done["status"] == "ok"
 
 
+def test_done_reports_mixed_pack_when_units_differ(run_dua_berkas: RunPaths) -> None:
+    profile = read_json(run_dua_berkas.profile_file)
+    units = []
+    for dataset, pack in zip(profile["datasets"], ("business", "generic"), strict=False):
+        unit = prepare_unit(run_dua_berkas, dataset, profile)
+        unit.done_file.write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "pack": pack,
+                    "phases_completed": ["F1"],
+                    "verification": {"rerun": "skipped", "mismatches": []},
+                }
+            ),
+            encoding="utf-8",
+        )
+        units.append(UnitResult(dataset, unit, RunOutcome("ok", "selesai", 1, 0, 0)))
+
+    done = build_done(run_dua_berkas, units, pack="business")
+
+    assert done["pack"] == "mixed"
+
+
 def test_small_group_does_not_stop_the_run(tmp_path: Path, settings) -> None:
     paths = RunPaths(settings.data_root, "2026-01-01-kecil").ensure()
     mini = tmp_path / "mini.csv"

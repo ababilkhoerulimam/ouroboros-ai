@@ -22,7 +22,9 @@ _PHASE_RE = re.compile(r"^F[1-7]$")
 _ID_RE = re.compile(r"^(E|H|AN)-\d{3}$")
 _DEEPDIVE_RE = re.compile(r"^(\d+)\.json$")
 
-UNITS = ("ratio", "IDR", "count", "days", "pp")
+#: `measure` = angka dengan satuan milik data itu sendiri (cm, kg, detik,
+#: skor); satuannya ditulis di `display`, bukan diubah ke satuan lain.
+UNITS = ("ratio", "IDR", "count", "days", "pp", "measure")
 CONFIDENCE_LEVELS = ("high", "medium", "low")
 HYPOTHESIS_STATUSES = ("unresolved", "supported", "rejected")
 

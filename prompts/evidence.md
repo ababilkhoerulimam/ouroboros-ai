@@ -63,7 +63,7 @@ the rounded form, or do not use it.
 | `id` | unique in the run, sequential, never reused for a different statement |
 | `statement` | one sentence, in Indonesian, contains the period and the comparison base |
 | `value` | a number, never a string; percentages are ratios, `0.124` not `12.4` |
-| `unit` | `ratio`, `IDR`, `count`, `days`, `pp` |
+| `unit` | `ratio`, `IDR`, `count`, `days`, `pp`, `measure` |
 | `display` | what the reader sees, Indonesian format |
 | `cell` | must be `status=ok` |
 | `artifact` | must contain the value |
@@ -81,6 +81,12 @@ the rounded form, or do not use it.
 | `3320` | `count` | `3.320 pesanan` |
 | `-5.0` | `pp` | `-5 poin persentase` |
 | `14` | `days` | `14 hari` |
+| `14.2` | `measure` | `14,2 cm` |
+
+`measure` is for a number whose unit belongs to the data itself: centimetres,
+kilograms, seconds, a score. Write the unit in `display` exactly as the data writes
+it. Never convert it to another unit, and never attach a currency the data does not
+have.
 
 **Ratio is not percentage point.** A share moving from 40% to 35% is `-0.05` ratio,
 displayed as `-5 poin persentase`. It is not `-12,5%`. The relative change of a
@@ -128,7 +134,8 @@ margin per produk: tidak ada kolom biaya
 retensi pelanggan: tidak ada identifier pelanggan
 ```
 
-Sources: the F1 metric table, F4 with no customer id, any phase closed on a stall.
+Sources: the F1 metric or column-role table, F4 with no entity key, any phase closed on
+a stall.
 These lines feed the report section "Yang tidak bisa dijawab". Keep them short and
 in Indonesian.
 

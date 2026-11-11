@@ -252,6 +252,19 @@ def test_default_prompt_library_uses_business_pack():
     assert library.system().strip()
 
 
+def test_generic_pack_overrides_phases_and_falls_back():
+    library = PromptLibrary(pack="generic")
+
+    assert library.pack == "generic"
+    assert library.audience == "pembaca tanpa latar statistik"
+    assert library.domain == "data umum"
+    assert "tabular dataset" in library.system()
+    assert "small-business" not in library.system()
+    assert "pembaca tanpa latar statistik" in library.system()
+    assert "What Is in the Data" in library.phase("F2")
+    assert "Penantang" in library.phase("F6"), "F6 generik mewarisi prompt dasar"
+
+
 def test_pack_overrides_files_and_renders_variables(tmp_path):
     base = tmp_path / "prompts"
     (base / "phases").mkdir(parents=True)
