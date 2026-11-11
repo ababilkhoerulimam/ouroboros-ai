@@ -202,7 +202,9 @@ def test_429_lalu_200_berhasil_tepat_dua_panggilan() -> None:
             return httpx.Response(429, text="terlalu banyak permintaan")
         return _json_response(_ok_body())
 
-    turn = _client(handler, retry_delays=(0, 0)).chat([{"role": "user", "content": "halo"}])
+    turn = _client(handler, retry_delays=(0, 0), empty_delays=(0,)).chat(
+        [{"role": "user", "content": "halo"}]
+    )
 
     assert count["n"] == 2
     assert turn.content == "selesai"
@@ -313,7 +315,9 @@ def test_balasan_kosong_diulang_lalu_berhasil() -> None:
             return _json_response(_empty_body())
         return _json_response(_ok_body())
 
-    turn = _client(handler, retry_delays=(0, 0)).chat([{"role": "user", "content": "halo"}])
+    turn = _client(handler, retry_delays=(0, 0), empty_delays=(0,)).chat(
+        [{"role": "user", "content": "halo"}]
+    )
 
     assert count["n"] == 2
     assert turn.content == "selesai"
@@ -327,8 +331,11 @@ def test_balasan_kosong_terus_menjadi_model_error() -> None:
         return _json_response(_empty_body())
 
     with pytest.raises(ModelError) as excinfo:
-        _client(handler, retry_delays=(0, 0)).chat([{"role": "user", "content": "halo"}])
+        _client(handler, retry_delays=(0, 0), empty_delays=(0, 0)).chat(
+            [{"role": "user", "content": "halo"}]
+        )
 
+    # Satu percobaan awal + dua retry balasan kosong.
     assert count["n"] == 3
     assert "kosong" in str(excinfo.value)
     assert "110097" in str(excinfo.value)
@@ -341,7 +348,9 @@ def test_balasan_dengan_penalaran_saja_tidak_dianggap_kosong() -> None:
         count["n"] += 1
         return _json_response(_ok_body(content=None, reasoning_content="mempertimbangkan"))
 
-    turn = _client(handler, retry_delays=(0, 0)).chat([{"role": "user", "content": "halo"}])
+    turn = _client(handler, retry_delays=(0, 0), empty_delays=(0,)).chat(
+        [{"role": "user", "content": "halo"}]
+    )
 
     assert count["n"] == 1
     assert turn.reasoning_content == "mempertimbangkan"

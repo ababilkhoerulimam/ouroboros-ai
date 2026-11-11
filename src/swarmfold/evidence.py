@@ -605,7 +605,7 @@ def _display_number(display: str) -> tuple[float, float] | None:
 
     Bentuk Indonesia: titik memisah ribuan, koma memisah desimal. Toleransi
     setengah digit terakhir karena `display` memang bentuk terbulatkan
-    (`-8,62%` untuk `-0.086196`).
+    (`-8,62%` untuk `-0.086196`, `Rp 272.149.981` untuk `272149980.7`).
     """
     match = _DISPLAY_NUMBER.search(display)
     if match is None:
@@ -617,8 +617,7 @@ def _display_number(display: str) -> tuple[float, float] | None:
         number = float(token)
     except ValueError:
         return None
-    tolerance = 0.5 * 10 ** -decimals if decimals else 0.0
-    return number, tolerance
+    return number, 0.5 * 10 ** -decimals
 
 
 def _matches(numbers: list[float], target: float, tolerance: float) -> bool:

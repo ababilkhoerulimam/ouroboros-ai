@@ -92,6 +92,7 @@ class ModelClient:
         timeout_s: float = 600.0,
         max_retries: int = 2,
         retry_delays: tuple[float, ...] = (5.0, 15.0),
+        empty_delays: tuple[float, ...] = (10.0, 30.0, 60.0),
         transport: httpx.BaseTransport | None = None,
     ):
         self._base_url = base_url.rstrip("/")
@@ -100,6 +101,7 @@ class ModelClient:
         self._timeout_s = timeout_s
         self._max_retries = max(0, int(max_retries))
         self._retry_delays = tuple(retry_delays)
+        self._empty_delays = tuple(empty_delays)
         self._transport = transport
 
     def __repr__(self) -> str:
@@ -127,27 +129,30 @@ class ModelClient:
         url = f"{self._base_url}/chat/completions"
 
         started = time.perf_counter()
-        attempts = self._max_retries + 1
+        http_failures = 0
+        empty_responses = 0
         with httpx.Client(transport=self._transport, timeout=self._timeout_s) as client:
-            for attempt in range(attempts):
+            while True:
                 try:
                     response = client.post(url, content=body, headers=headers)
                 except httpx.TransportError as exc:
-                    if attempt >= self._max_retries:
+                    if http_failures >= self._max_retries:
                         raise ModelError(
-                            f"koneksi ke model gagal setelah {attempt + 1} percobaan: "
+                            f"koneksi ke model gagal setelah {http_failures + 1} percobaan: "
                             f"{type(exc).__name__}: {exc}"
                         ) from exc
-                    time.sleep(self._delay(attempt))
+                    time.sleep(self._delay(http_failures))
+                    http_failures += 1
                     continue
 
                 if response.status_code >= 500 or response.status_code in _TRANSIENT_STATUS:
-                    if attempt >= self._max_retries:
+                    if http_failures >= self._max_retries:
                         raise ModelError(self._http_message(response))
                     if response.status_code in _TRANSIENT_STATUS:
-                        time.sleep(self._retry_after(response, attempt))
+                        time.sleep(self._retry_after(response, http_failures))
                     else:
-                        time.sleep(self._delay(attempt))
+                        time.sleep(self._delay(http_failures))
+                    http_failures += 1
                     continue
 
                 if response.status_code >= 400:
@@ -159,19 +164,23 @@ class ModelClient:
                 if turn.content.strip() or turn.reasoning_content or turn.tool_calls:
                     return turn
                 # Pesan yang benar-benar kosong (tanpa prosa, tanpa penalaran,
-                # tanpa tool call) bukan jawaban: itu gangguan gateway. Diukur
-                # pada run 2026-11-11-eec3dc: tiga balasan kosong berurutan
-                # mematikan run di F5 padahal permintaan yang sama dengan prompt
-                # 140 ribu token dijawab normal. Mengulang jauh lebih murah
-                # daripada kehilangan seluruh run.
-                if attempt >= self._max_retries:
+                # tanpa tool call) bukan jawaban: itu gangguan gateway. Run
+                # 2026-11-11-eec3dc mati di F5 dan 2026-11-11-3286e5 mati di F2
+                # karena tiga balasan kosong berurutan, padahal permintaan yang
+                # sama dengan prompt 140 ribu token dijawab normal. Jeda sengaja
+                # lebih panjang daripada retry HTTP: tiga percobaan berjarak
+                # 5-15 detik semuanya kosong, jadi gangguan hulunya menempel.
+                empty_responses += 1
+                if empty_responses > len(self._empty_delays):
+                    preview = response.text[:_BODY_PREVIEW].replace("\n", " ")
                     raise ModelError(
                         "model membalas kosong setelah "
-                        f"{attempt + 1} percobaan: finish_reason="
+                        f"{empty_responses} percobaan: finish_reason="
                         f"{turn.finish_reason or '-'} "
-                        f"prompt_tokens={(turn.usage or {}).get('prompt_tokens', 0)}"
+                        f"prompt_tokens={(turn.usage or {}).get('prompt_tokens', 0)} "
+                        f"messages={len(messages)} body={preview!r}"
                     )
-                time.sleep(self._delay(attempt))
+                time.sleep(self._empty_delays[empty_responses - 1])
 
         # Tidak tercapai: loop selalu return atau raise.
         raise ModelError("panggilan model berakhir tanpa respons")  # pragma: no cover

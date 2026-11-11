@@ -316,3 +316,14 @@ def test_number_inside_identifier_is_not_counted(tmp_path):
     errors = store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH)
 
     assert len(errors) == 1
+
+
+def test_rounded_rupiah_display_matches_decimal_rendering(tmp_path):
+    # `Rp 272.149.981` adalah pembulatan dari `avg_sales_baseline=272149980.7`.
+    store = _ok_setup(tmp_path, text="avg_sales_baseline=272149980.7\n")
+    store.add(
+        "F3",
+        _finding(value=272149981, unit="IDR", display="Rp 272.149.981/bulan"),
+    )
+
+    assert store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH) == []
