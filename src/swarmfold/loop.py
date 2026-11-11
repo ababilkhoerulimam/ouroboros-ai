@@ -99,6 +99,7 @@ class AgentLoop:
         self.cells_since_checkpoint = 0
         self.checkpoint_pending: Path | None = None
         self.nudges = 0
+        self._state_index: int | None = None
         self.errors: list[str] = []
         self.phase_start_cell = 0
         self.dataset_hash = ""
@@ -167,7 +168,7 @@ class AgentLoop:
         stuck = 0
         for _turn in range(max_turns):
             self._maybe_checkpoint(messages)
-            messages.append({"role": "user", "content": self._state_text()})
+            self._refresh_state(messages)
 
             turn = self.client.chat(messages, tools=ToolBox.schema())
             self._save_reasoning(turn)
@@ -176,6 +177,12 @@ class AgentLoop:
 
             if not turn.tool_calls:
                 self.nudges += 1
+                self.status.warn(
+                    "turn tanpa tool call: finish="
+                    f"{turn.finish_reason or '-'} content={len(turn.content)} "
+                    f"reasoning={len(turn.reasoning_content or '')} "
+                    f"prompt_tokens={(turn.usage or {}).get('prompt_tokens', 0)}"
+                )
                 if self.nudges > MAX_NUDGES:
                     self.errors.append("model berhenti tanpa memanggil tool")
                     return
@@ -339,6 +346,18 @@ class AgentLoop:
                     f"- {item.get('id')}: {members} — {item.get('rows')} baris, kunci {keys}"
                 )
         return "\n".join(rows) or "- tidak ada berkas"
+
+    def _refresh_state(self, messages: list[dict[str, Any]]) -> None:
+        """Ganti blok state, jangan menumpuknya.
+
+        State adalah snapshot keadaan sekarang, bukan riwayat. Menambahkannya
+        setiap turn membuat prompt tumbuh sekitar 7.600 token per cell; pada
+        ~130.000 token gateway berhenti memanggil tool dan membalas pesan kosong.
+        """
+        if self._state_index is not None and self._state_index < len(messages):
+            messages.pop(self._state_index)
+        messages.append({"role": "user", "content": self._state_text()})
+        self._state_index = len(messages) - 1
 
     def _state_text(self) -> str:
         phase = self.controller.current or "F1"

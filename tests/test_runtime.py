@@ -86,3 +86,13 @@ def test_status_store_accepts_failed_from_any_state(tmp_path: Path, current: str
         store.update(state=state)
     store.update(state="failed")
     assert read_json(paths.status_file)["state"] == "failed"
+
+
+def test_relative_works_when_root_is_relative(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    paths = runtime.RunPaths(root=Path("runs"), run_id="2026-01-01-rel").ensure()
+    target = paths.dir / "evidence" / "F1.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("{}", encoding="utf-8")
+
+    assert paths.relative(target.resolve()) == "evidence/F1.json"

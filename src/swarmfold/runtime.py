@@ -144,10 +144,15 @@ class RunPaths:
         return self
 
     def relative(self, path: Path) -> str:
+        # Kedua sisi di-resolve: `dir` bisa relatif ("./runs/<id>") sementara
+        # pemanggil membawa path absolut. Tanpa ini relative_to gagal, fungsi
+        # mengembalikan path absolut, dan write_file menolak karena direktori
+        # pertamanya menjadi "C:" alih-alih "evidence".
+        target = Path(path).resolve()
         try:
-            return path.relative_to(self.dir).as_posix()
+            return target.relative_to(self.dir.resolve()).as_posix()
         except ValueError:
-            return path.as_posix()
+            return target.as_posix()
 
 
 class StatusStore:

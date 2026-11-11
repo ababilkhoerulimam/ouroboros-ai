@@ -65,6 +65,30 @@ def test_finish_before_f7_forces_writer(run: RunPaths, settings) -> None:
     assert outcome.status in {"ok", "partial"}
 
 
+def test_state_block_is_replaced_not_appended(run: RunPaths, settings) -> None:
+    class Capturing(ScriptedModel):
+        def __init__(self) -> None:
+            super().__init__([tool_turn(run_cell(f"print({n})")) for n in range(1, 5)])
+            self.state_counts: list[int] = []
+
+        def chat(self, messages, tools=None):
+            self.state_counts.append(
+                sum(
+                    1
+                    for message in messages
+                    if str(message.get("content", "")).startswith("## State")
+                )
+            )
+            return super().chat(messages, tools)
+
+    model = Capturing()
+    loop = AgentLoop(run, settings, model, Brief())
+    loop.run()
+
+    assert model.state_counts, "model tidak pernah dipanggil"
+    assert max(model.state_counts) == 1, "blok state menumpuk tiap turn"
+
+
 def test_report_rules_load_only_in_f7(run: RunPaths, settings) -> None:
     loop = AgentLoop(run, settings, ScriptedModel([]), Brief())
 
