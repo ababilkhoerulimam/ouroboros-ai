@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 
-from conftest import ScriptedModel, finish, run_cell, tool_turn
+from conftest import ScriptedModel, empty_turn, finish, run_cell, tool_turn
 from synthetic import tulis_catatan, tulis_pengukuran
 
 from swarmfold.ingest import ingest
@@ -346,3 +346,51 @@ def test_two_groups_run_as_separate_units(run_dua_berkas: RunPaths, settings) ->
     assert "D1: penjualan.csv" not in opening
     assert (run_dua_berkas.dir / "datasets" / "D1" / "analysis.ipynb").is_file()
     assert (run_dua_berkas.dir / "datasets" / "D2" / "analysis.ipynb").is_file()
+
+
+def test_giliran_kosong_di_nudge_lalu_lanjut(run: RunPaths, settings) -> None:
+    # b7f451: gateway membalas kosong empat kali untuk prompt yang sama.
+    # Giliran kosong harus memicu nudge, bukan menghentikan run.
+    turns = [
+        empty_turn(),
+        tool_turn(run_cell("print(1)")),
+        tool_turn(run_cell("print(2)")),
+        tool_turn(finish("ok", "selesai")),
+    ]
+    model = ScriptedModel(turns)
+    loop = AgentLoop(run, settings, model, Brief())
+
+    outcome = loop.run()
+
+    assert outcome.cells == 2, "dua cell setelah nudge harus benar-benar jalan"
+    # Empat giliran skrip + satu `finish` bawaan ScriptedModel saat skrip habis.
+    assert model.calls == 5
+    assert not [error for error in outcome.errors if "tanpa memanggil tool" in error]
+
+
+def test_tiga_giliran_kosong_berurutan_menghentikan_run(run: RunPaths, settings) -> None:
+    model = ScriptedModel([empty_turn(), empty_turn(), empty_turn(), empty_turn()])
+    loop = AgentLoop(run, settings, model, Brief())
+
+    outcome = loop.run()
+
+    assert outcome.cells == 0
+    assert any("tanpa memanggil tool" in error for error in outcome.errors)
+
+
+def test_nudge_direset_setelah_kemajuan(run: RunPaths, settings) -> None:
+    # Satu giliran kosong di awal tidak boleh menghabiskan jatah nudge run.
+    turns = [
+        empty_turn(),
+        tool_turn(run_cell("print(1)")),
+        empty_turn(),
+        tool_turn(run_cell("print(2)")),
+        tool_turn(finish("ok", "selesai")),
+    ]
+    model = ScriptedModel(turns)
+    loop = AgentLoop(run, settings, model, Brief())
+
+    outcome = loop.run()
+
+    assert outcome.cells == 2
+    assert model.calls == 6

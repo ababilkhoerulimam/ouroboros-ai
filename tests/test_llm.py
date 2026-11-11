@@ -323,22 +323,24 @@ def test_balasan_kosong_diulang_lalu_berhasil() -> None:
     assert turn.content == "selesai"
 
 
-def test_balasan_kosong_terus_menjadi_model_error() -> None:
+def test_balasan_kosong_terus_dikembalikan_ke_loop() -> None:
+    # Loop yang men-nudge dengan pesan baru: itu mengubah prompt dan memutus
+    # determinisme balasan kosong. Klien tidak boleh mematikan run di sini.
     count = {"n": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
         count["n"] += 1
         return _json_response(_empty_body())
 
-    with pytest.raises(ModelError) as excinfo:
-        _client(handler, retry_delays=(0, 0), empty_delays=(0, 0)).chat(
-            [{"role": "user", "content": "halo"}]
-        )
+    turn = _client(handler, retry_delays=(0, 0), empty_delays=(0, 0)).chat(
+        [{"role": "user", "content": "halo"}]
+    )
 
     # Satu percobaan awal + dua retry balasan kosong.
     assert count["n"] == 3
-    assert "kosong" in str(excinfo.value)
-    assert "110097" in str(excinfo.value)
+    assert turn.content == ""
+    assert turn.tool_calls == []
+    assert turn.finish_reason == "stop"
 
 
 def test_balasan_dengan_penalaran_saja_tidak_dianggap_kosong() -> None:

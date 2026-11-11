@@ -164,22 +164,18 @@ class ModelClient:
                 if turn.content.strip() or turn.reasoning_content or turn.tool_calls:
                     return turn
                 # Pesan yang benar-benar kosong (tanpa prosa, tanpa penalaran,
-                # tanpa tool call) bukan jawaban: itu gangguan gateway. Run
-                # 2026-11-11-eec3dc mati di F5 dan 2026-11-11-3286e5 mati di F2
-                # karena tiga balasan kosong berurutan, padahal permintaan yang
-                # sama dengan prompt 140 ribu token dijawab normal. Jeda sengaja
-                # lebih panjang daripada retry HTTP: tiga percobaan berjarak
-                # 5-15 detik semuanya kosong, jadi gangguan hulunya menempel.
+                # tanpa tool call) bukan jawaban: itu model yang tidak
+                # menghasilkan apa pun. Run 2026-11-11-eec3dc mati di F5 dan
+                # 3286e5 mati di F2 karena tiga balasan kosong berurutan,
+                # padahal permintaan yang sama dengan prompt 140 ribu token
+                # dijawab normal. Dua percobaan ulang menutup gangguan sesaat;
+                # bila tetap kosong, giliran kosong dikembalikan ke loop supaya
+                # ia men-nudge dengan pesan baru, yang mengubah prompt dan
+                # memutus determinisme balasan kosong (b7f451: empat percobaan
+                # identik, empat-empatnya kosong).
                 empty_responses += 1
                 if empty_responses > len(self._empty_delays):
-                    preview = response.text[:_BODY_PREVIEW].replace("\n", " ")
-                    raise ModelError(
-                        "model membalas kosong setelah "
-                        f"{empty_responses} percobaan: finish_reason="
-                        f"{turn.finish_reason or '-'} "
-                        f"prompt_tokens={(turn.usage or {}).get('prompt_tokens', 0)} "
-                        f"messages={len(messages)} body={preview!r}"
-                    )
+                    return turn
                 time.sleep(self._empty_delays[empty_responses - 1])
 
         # Tidak tercapai: loop selalu return atau raise.

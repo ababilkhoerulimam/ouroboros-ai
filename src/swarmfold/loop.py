@@ -250,6 +250,10 @@ class AgentLoop:
                 return
 
             stuck = 0 if progress else stuck + 1
+            if progress:
+                # Nudge mengukur kemacetan, bukan dihitung seumur run: satu
+                # giliran kosong di F1 tidak boleh menghabiskan jatah F5.
+                self.nudges = 0
             if stuck < MAX_STUCK_TURNS:
                 continue
             if self.controller.current == "F7":

@@ -61,6 +61,19 @@ def tool_turn(*calls: tuple[str, dict], content: str = "") -> ModelTurn:
     )
 
 
+def empty_turn() -> ModelTurn:
+    """Giliran yang tidak menghasilkan apa pun: tanpa prosa, penalaran, tool."""
+    return ModelTurn(
+        content="",
+        reasoning_content=None,
+        tool_calls=[],
+        usage={"prompt_tokens": 10, "completion_tokens": 0},
+        latency_ms=5,
+        model_requested="test/model",
+        finish_reason="stop",
+    )
+
+
 def run_cell(code: str, intent: str = "coba satu angka") -> tuple[str, dict]:
     return ("run_cell", {"code": code, "intent": intent})
 
