@@ -382,3 +382,32 @@ def test_single_decimal_place_casts(tmp_path: Path) -> None:
     profile = _profile(run)
     assert _column(profile, "total")["casts"] == ["decimal_comma"]
     assert "kolom 'total' dikonversi dari desimal koma" in profile["warnings"]
+
+
+def test_multi_sheet_workbook_melts_merged_period_headers(tmp_path: Path) -> None:
+    path = tmp_path / "pivot.xlsx"
+    workbook = Workbook()
+    ringkas = workbook.active
+    ringkas.title = "Ringkasan"
+    ringkas.append(["Indikator", "Juni", "Juli"])
+    ringkas.append(["Penjualan", 100, 90])
+
+    data = workbook.create_sheet("Kontribusi")
+    data.append([None, None, "JUNI 2026", None, "JULI 2026", None])
+    data.append(["Rank", "SKU", "Penjualan", "Produk", "Penjualan", "Produk"])
+    for index in range(12):
+        data.append([index + 1, f"SKU{index}", 1000 + index, 10 + index, 900 + index, 9 + index])
+    workbook.save(path)
+
+    run = _run(tmp_path)
+    result = ingest([path], run)
+
+    assert [item.name for item in result.files] == ["pivot.xlsx [Kontribusi]"]
+    assert any("Ringkasan" in warning and "dilewati" in warning for warning in result.warnings)
+    assert any("rank" in warning for warning in result.warnings)
+
+    frame = pd.read_csv(run.data_dir / "pivot__kontribusi.csv")
+    assert list(frame.columns) == ["sku", "penjualan", "produk", "periode"]
+    assert len(frame) == 24
+    totals = frame.groupby("periode")["penjualan"].sum().to_dict()
+    assert totals == {"JUNI 2026": 12066, "JULI 2026": 10866}

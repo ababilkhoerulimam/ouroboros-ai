@@ -59,6 +59,11 @@ _MISSING_WARN_PCT = 0.40
 _MAX_SAMPLES = 3
 _MAX_SAMPLE_CHARS = 120
 
+#: Sheet yang lebih kecil dari ini tidak cukup untuk dianalisis (mis. tabel
+#: ringkasan 2-4 baris); dilewati dengan peringatan, bukan diolah jadi angka nol.
+_MIN_SHEET_ROWS = 10
+_MAX_SLUG = 40
+
 _JOIN_MIN_OVERLAP = 0.80
 _JOIN_MIN_DISTINCT = 2
 _JOIN_MAX_DISTINCT = 20_000
@@ -124,52 +129,71 @@ def ingest(paths: list[Path], run: RunPaths) -> IngestResult:
         input_dest.write_bytes(raw)
         os.chmod(input_dest, _READ_ONLY)
 
-        frame, encoding, delimiter = _load_frame(raw, fmt)
-        frame = _prepare_frame(frame)
+        frames = _load_frames(raw, fmt)
+        multi = len(frames) > 1
+        for sheet, loaded, encoding, delimiter in frames:
+            label = source.name if sheet is None else f"{source.name} [{sheet}]"
+            dropped = list(loaded.attrs.get("dropped") or [])
+            if dropped:
+                warnings.append(
+                    f"sheet '{sheet}' pada '{source.name}': kolom agregat tanpa periode "
+                    f"dilewati saat melebur ({', '.join(dropped)})"
+                )
+            # Workbook multi-sheet biasanya memuat tabel ringkasan di samping tabel
+            # data; ringkasan 2-4 baris tidak layak jadi dataset sendiri.
+            if multi and sheet is not None and len(loaded) < _MIN_SHEET_ROWS:
+                warnings.append(
+                    f"sheet '{sheet}' pada '{source.name}' hanya {len(loaded)} baris; "
+                    "dilewati karena tidak cukup untuk dianalisis"
+                )
+                continue
 
-        columns, distinct, duplicate_rows, duplicate_pct, file_warnings = _profile_frame(
-            frame, source.name
-        )
-        warnings.extend(file_warnings)
-        candidate_keys = _candidate_keys(frame, distinct)
+            frame = _prepare_frame(loaded)
 
-        data_name = _reserve(f"{source.stem}.csv", used_data)
-        data_dest = run.data_dir / data_name
-        _write_canonical(frame, data_dest)
-
-        rows = int(len(frame))
-        cols = int(frame.shape[1])
-        files.append(
-            IngestedFile(
-                name=source.name,
-                input_path=run.relative(input_dest),
-                data_path=run.relative(data_dest),
-                sha256=digest,
-                bytes=len(raw),
-                format=fmt,
-                encoding=encoding,
-                delimiter=delimiter,
-                rows=rows,
-                cols=cols,
+            columns, distinct, duplicate_rows, duplicate_pct, file_warnings = _profile_frame(
+                frame, label
             )
-        )
-        file_profiles.append(
-            {
-                "name": source.name,
-                "format": fmt,
-                "encoding": encoding,
-                "delimiter": delimiter,
-                "sha256": digest,
-                "bytes": len(raw),
-                "rows": rows,
-                "cols": cols,
-                "columns": columns,
-                "duplicate_rows": duplicate_rows,
-                "duplicate_pct": duplicate_pct,
-                "candidate_keys": candidate_keys,
-            }
-        )
-        join_inputs.append((source.name, frame, distinct))
+            warnings.extend(file_warnings)
+            candidate_keys = _candidate_keys(frame, distinct)
+
+            stem = source.stem if not multi else f"{source.stem}__{_slug(str(sheet))}"
+            data_name = _reserve(f"{stem}.csv", used_data)
+            data_dest = run.data_dir / data_name
+            _write_canonical(frame, data_dest)
+
+            rows = int(len(frame))
+            cols = int(frame.shape[1])
+            files.append(
+                IngestedFile(
+                    name=label,
+                    input_path=run.relative(input_dest),
+                    data_path=run.relative(data_dest),
+                    sha256=digest,
+                    bytes=len(raw),
+                    format=fmt,
+                    encoding=encoding,
+                    delimiter=delimiter,
+                    rows=rows,
+                    cols=cols,
+                )
+            )
+            file_profiles.append(
+                {
+                    "name": label,
+                    "format": fmt,
+                    "encoding": encoding,
+                    "delimiter": delimiter,
+                    "sha256": digest,
+                    "bytes": len(raw),
+                    "rows": rows,
+                    "cols": cols,
+                    "columns": columns,
+                    "duplicate_rows": duplicate_rows,
+                    "duplicate_pct": duplicate_pct,
+                    "candidate_keys": candidate_keys,
+                }
+            )
+            join_inputs.append((label, frame, distinct))
 
     joins = _join_candidates(join_inputs)
     profile: dict[str, Any] = {
@@ -227,20 +251,176 @@ def _sniff_delimiter(text: str) -> str:
     return best if counts[best] > 0 else ","
 
 
-def _load_frame(raw: bytes, fmt: str) -> tuple[pd.DataFrame, str | None, str | None]:
+def _load_frames(
+    raw: bytes, fmt: str
+) -> list[tuple[str | None, pd.DataFrame, str | None, str | None]]:
+    """Kembalikan satu frame per tabel: satu sheet Excel menjadi satu tabel."""
     if fmt in ("csv", "tsv"):
         text, encoding = _decode_text(raw)
         delimiter = "\t" if fmt == "tsv" else _sniff_delimiter(text)
-        return pd.read_csv(io.StringIO(text), sep=delimiter), encoding, delimiter
+        return [(None, pd.read_csv(io.StringIO(text), sep=delimiter), encoding, delimiter)]
     if fmt == "json":
         text, encoding = _decode_text(raw)
-        return _frame_from_json(text), encoding, None
+        return [(None, _frame_from_json(text), encoding, None)]
     if fmt == "xlsx":
-        frame = pd.read_excel(io.BytesIO(raw), sheet_name=0, engine="openpyxl")
-        return frame, None, None
+        book = pd.read_excel(
+            io.BytesIO(raw), sheet_name=None, header=None, engine="openpyxl"
+        )
+        return [(name, _flatten_sheet(frame), None, None) for name, frame in book.items()]
     if fmt == "parquet":
-        return pd.read_parquet(io.BytesIO(raw)), None, None
+        return [(None, pd.read_parquet(io.BytesIO(raw)), None, None)]
     raise ValueError(f"format tidak didukung: {fmt}")
+
+
+#: Nama bulan dan tahun di header ukuran, supaya blok yang sama di bulan berbeda
+#: tidak menjadi kolom berbeda setelah dilebur.
+_PERIOD_NOISE_RE = re.compile(
+    r"\b(januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|"
+    r"november|desember|january|february|march|april|may|june|july|august|"
+    r"september|october|november|december|jan|feb|mar|apr|jun|jul|agu|aug|"
+    r"sep|okt|oct|nov|des|dec|periode|period)\b|\b20\d{2}\b",
+    re.IGNORECASE,
+)
+
+
+def _clean_header(text: str) -> str:
+    """Rapikan header pivot: buang keterangan dalam kurung, nama bulan, dan tahun."""
+    value = re.sub(r"\(.*?\)", " ", str(text))
+    value = _PERIOD_NOISE_RE.sub(" ", value)
+    value = re.sub(r"[^0-9A-Za-z]+", "_", value).strip("_").lower()
+    return value or "kolom"
+
+
+def _dedupe(names: list[str]) -> list[str]:
+    seen: dict[str, int] = {}
+    out: list[str] = []
+    for name in names:
+        count = seen.get(name, 0) + 1
+        seen[name] = count
+        out.append(name if count == 1 else f"{name}_{count}")
+    return out
+
+
+def _numeric(series: pd.Series) -> bool:
+    values = series.dropna()
+    if values.empty:
+        return False
+    return pd.api.types.is_numeric_dtype(values) or bool(
+        pd.to_numeric(values, errors="coerce").notna().mean() >= 0.95
+    )
+
+
+def _flatten_sheet(raw: pd.DataFrame) -> pd.DataFrame:
+    """Ubah sheet pivot menjadi tabel datar.
+
+    Excel menyimpan header bertingkat sebagai sel gabungan: label periode hanya
+    muncul di kolom pertama blok, sisanya kosong. Baris di atas header dipakai
+    sebagai label blok dan dilebur menjadi kolom `periode`.
+    """
+    frame = raw.dropna(how="all").dropna(axis=1, how="all").reset_index(drop=True)
+    if frame.empty:
+        return frame
+
+    counts = frame.notna().sum(axis=1)
+    header_row = int(counts.idxmax())
+    header = [
+        str(value).strip() if pd.notna(value) else ""
+        for value in frame.iloc[header_row].tolist()
+    ]
+    body = frame.iloc[header_row + 1 :].reset_index(drop=True)
+    header_names = [_clean_header(text) for text in header]
+    names = _dedupe(header_names)
+
+    blocks: list[str | None] = [None] * len(names)
+    if header_row > 0:
+        # Label blok dibaca apa adanya, lalu disebar menurut jarak antar label:
+        # ffill lebih dulu akan menyeret label terakhir ke kolom agregat.
+        raw_blocks = [
+            None if pd.isna(value) else str(value).strip()
+            for value in frame.iloc[header_row - 1].tolist()
+        ]
+        blocks = _spread_blocks(raw_blocks)
+
+    labels = [label for label in blocks if label]
+    spans = {label: labels.count(label) for label in set(labels)}
+    if not any(span >= 2 for span in spans.values()):
+        body.columns = names
+        return body
+
+    identifier = [
+        index
+        for index, label in enumerate(blocks)
+        if label is None and not _numeric(body.iloc[:, index])
+    ]
+    dropped = [
+        names[index]
+        for index, label in enumerate(blocks)
+        if label is None and index not in identifier
+    ]
+    if not identifier:
+        body.columns = names
+        return body
+
+    parts: list[pd.DataFrame] = []
+    ordered = list(dict.fromkeys(labels))
+    # Blok dengan lebar sama dianggap berisi ukuran yang sama. Nama dari blok
+    # pertama dipakai ulang supaya "Kontribusi Agustus 2026" tidak menjadi kolom
+    # terpisah dari "Kontribusi Penjualan" di bulan lain.
+    canonical = [
+        header_names[index]
+        for index, value in enumerate(blocks)
+        if value == ordered[0]
+    ]
+    for label in ordered:
+        columns = [index for index, value in enumerate(blocks) if value == label]
+        data: dict[str, Any] = {
+            names[index]: body.iloc[:, index].to_numpy() for index in identifier
+        }
+        block_names = (
+            list(canonical)
+            if len(columns) == len(canonical)
+            else [header_names[i] for i in columns]
+        )
+        for name, index in zip(_dedupe(block_names), columns, strict=False):
+            data[name] = body.iloc[:, index].to_numpy()
+        part = pd.DataFrame(data)
+        part["periode"] = label
+        parts.append(part)
+
+    melted = pd.concat(parts, ignore_index=True)
+    melted.attrs["dropped"] = dropped
+    return melted
+
+
+def _spread_blocks(labels: list[str | None]) -> list[str | None]:
+    """Sebarkan label blok ke kolomnya.
+
+    Sel gabungan Excel hanya menyimpan label di kolom pertama, dan label terakhir
+    ikut mengalir ke kolom agregat di kanannya bila di-ffill. Jarak antar label
+    yang seragam memberi lebar blok, sehingga kolom sesudah blok terakhir tetap
+    tanpa label dan tidak salah dianggap bagian blok.
+    """
+    positions = [index for index, label in enumerate(labels) if label]
+    if not positions:
+        return [None] * len(labels)
+
+    if len(positions) >= 2:
+        gaps = {positions[i + 1] - positions[i] for i in range(len(positions) - 1)}
+        if len(gaps) == 1:
+            width = gaps.pop()
+            spread: list[str | None] = [None] * len(labels)
+            for position in positions:
+                for index in range(position, min(position + width, len(labels))):
+                    spread[index] = labels[position]
+            return spread
+
+    filled: list[str | None] = []
+    last: str | None = None
+    for label in labels:
+        if label:
+            last = label
+        filled.append(last)
+    return filled
 
 
 def _frame_from_json(text: str) -> pd.DataFrame:
@@ -289,6 +469,11 @@ def _reserve(filename: str, used: set[str]) -> str:
         counter += 1
     used.add(candidate)
     return candidate
+
+
+def _slug(text: str) -> str:
+    value = re.sub(r"[^0-9A-Za-z]+", "_", str(text)).strip("_").lower()
+    return value[:_MAX_SLUG] or "sheet"
 
 
 # --------------------------------------------------------------------------- #
