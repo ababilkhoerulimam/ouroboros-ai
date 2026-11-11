@@ -229,7 +229,7 @@ def test_finish_blocked_stops_without_forcing_f7(run: RunPaths, settings) -> Non
     assert outcome.status == "blocked"
 
 
-def test_opening_message_names_each_dataset(run_dua_berkas: RunPaths, settings) -> None:
+def test_two_groups_run_as_separate_units(run_dua_berkas: RunPaths, settings) -> None:
     class Capturing(ScriptedModel):
         def __init__(self) -> None:
             super().__init__([tool_turn(finish("partial", "cukup"))])
@@ -242,8 +242,11 @@ def test_opening_message_names_each_dataset(run_dua_berkas: RunPaths, settings) 
     model = Capturing()
     AgentLoop(run_dua_berkas, settings, model, Brief()).run()
 
+    # Pesan terakhir berasal dari unit terakhir (D2), yang hanya memuat
+    # kelompoknya sendiri.
     opening = str(model.seen[1]["content"])
-    assert "Kelompok data" in opening
-    assert "D1: penjualan.csv" in opening
+    assert "Lingkup unit" in opening
     assert "D2: pelanggan.csv" in opening
-    assert "Analisis semua kelompok" in opening
+    assert "D1: penjualan.csv" not in opening
+    assert (run_dua_berkas.dir / "datasets" / "D1" / "analysis.ipynb").is_file()
+    assert (run_dua_berkas.dir / "datasets" / "D2" / "analysis.ipynb").is_file()

@@ -183,14 +183,20 @@ def _package(paths: RunPaths) -> Path:
 
 
 def _missing_deliverables(paths: RunPaths, done: dict[str, Any]) -> list[str]:
-    """Deliverable wajib yang belum ada di direktori run."""
+    """Deliverable wajib yang belum ada di direktori run.
+
+    Run multi-kelompok mendeklarasikan deliverable sebagai daftar (satu notebook
+    per kelompok), jadi setiap nama diperiksa, bukan hanya yang pertama.
+    """
     declared = done.get("deliverables")
     declared = declared if isinstance(declared, dict) else {}
     missing: list[str] = []
     for key, fallback in _REQUIRED_DELIVERABLES:
-        name = str(declared.get(key) or fallback)
-        if not (paths.dir / name).is_file():
-            missing.append(name)
+        value = declared.get(key) or fallback
+        names = value if isinstance(value, list) else [value]
+        for name in names:
+            if not (paths.dir / str(name)).is_file():
+                missing.append(str(name))
     return missing
 
 

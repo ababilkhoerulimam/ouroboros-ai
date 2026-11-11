@@ -74,6 +74,39 @@ Aturan:
 - `triage.mode` ∈ `full | cleaning_only | insufficient`; `insufficient`
   menghentikan run sebelum kernel dijalankan.
 
+### Run multi-kelompok
+
+Bila `datasets` berisi lebih dari satu kelompok, run dipecah menjadi satu unit
+per kelompok. Unit adalah run kecil dengan tata letak yang sama persis:
+
+```
+runs/<run_id>/
+  datasets/
+    D1/                     analysis.ipynb, laporan.md, profile.json,
+                            evidence/, cells/, charts/, notes/, derived/,
+                            status.json, done.json
+    D2/
+  laporan.md                gabungan laporan unit
+  done.json                 status agregat + daftar datasets
+```
+
+Aturan:
+
+- `profile.json` unit hanya memuat berkas kelompok itu; `datasets` berisi satu
+  entri. `dataset_hash` unit sama dengan run karena `data/` ditautkan utuh.
+- `E-###` / `H-###` / `AN-###` unik **di dalam satu kelompok**, bukan lintas
+  kelompok. Slot laporan diselesaikan terhadap evidence kelompok yang memuatnya.
+- `laporan.md` run disusun tanpa model: tabel kelompok, isi laporan unit dengan
+  path digeser ke `datasets/<id>/`, lalu ringkasan lintas kelompok yang tidak
+  membandingkan angka.
+- `done.json.datasets[]` = `{id, files, rows, status, notebook, report,
+  clean_data, cells, evidence}`; `deliverables.notebook` dan `clean_data`
+  berupa daftar path relatif terhadap akar run.
+- Kelompok dengan verdict `insufficient` tetap mendapat laporan "data belum
+  siap" sendiri; run tidak berhenti karena satu kelompok kosong.
+- Run dengan satu kelompok tetap memakai tata letak akar (`analysis.ipynb`,
+  `laporan.md`, `evidence/F{n}.json`), tanpa direktori `datasets/`.
+
 ## 2. `status.json`
 
 Diperbarui setiap transisi state.
@@ -231,6 +264,10 @@ Ditulis sebagai aksi terakhir.
 
 `status: failed` tetap menghasilkan paket, berisi `status.json`, `profile.json`,
 dan `laporan.md` versi "data belum siap" atau "analisis terhenti".
+
+Run multi-kelompok memakai `mode: "multi_dataset"` dan menambahkan `datasets[]`
+seperti di §1; `deliverables.notebook` dan `clean_data` berupa daftar path
+relatif terhadap akar run.
 
 ## 8. Slot laporan
 

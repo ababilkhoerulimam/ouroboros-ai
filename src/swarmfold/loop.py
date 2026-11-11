@@ -76,11 +76,13 @@ class AgentLoop:
         store: EvidenceStore | None = None,
         controller: PhaseController | None = None,
         prompts: PromptLibrary | None = None,
+        dataset: dict[str, Any] | None = None,
     ):
         self.paths = paths
         self.settings = settings
         self.client = client
         self.brief = brief or Brief()
+        self.dataset = dataset
         self.store = store or EvidenceStore(paths)
         self.controller = controller or PhaseController(paths, self.store)
         self.prompts = prompts or PromptLibrary(
@@ -105,6 +107,14 @@ class AgentLoop:
     def run(self) -> RunOutcome:
         self.paths.ensure()
         self._prepare_status()
+        if self.dataset is None:
+            datasets = self._datasets()
+            if len(datasets) > 1:
+                # Kelompok yang tidak berbagi kunci tidak bisa dianalisis di satu
+                # kernel tanpa join kosong. Jalankan satu unit per kelompok.
+                from .multidataset import run_multi
+
+                return run_multi(self.paths, self.settings, self.client, self.brief, datasets)
         triage = self._apply_triage()
         if triage.mode == MODE_INSUFFICIENT:
             return self._finish_insufficient(triage)
@@ -274,7 +284,18 @@ class AgentLoop:
             *[f"- {reason}" for reason in (self.triage.get("reasons") or [])],
             "",
         ]
-        if len(self._datasets()) > 1:
+        if self.dataset is not None:
+            files = ", ".join(str(name) for name in self.dataset.get("files") or [])
+            lines.extend(
+                [
+                    "## Lingkup unit",
+                    f"Unit ini hanya memuat kelompok {self.dataset.get('id')}: {files}.",
+                    "Analisis kelompok ini saja. Kelompok lain dijalankan sebagai unit "
+                    "terpisah dan digabung di laporan akhir.",
+                    "",
+                ]
+            )
+        elif len(self._datasets()) > 1:
             lines.append(
                 "Analisis semua kelompok di atas, termasuk yang kecil. Join hanya di "
                 "dalam satu kelompok; jangan menggabungkan berkas lintas kelompok."

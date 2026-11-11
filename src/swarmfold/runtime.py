@@ -120,6 +120,14 @@ class RunPaths:
     def clean_data_file(self) -> Path:
         return self.derived_dir / "01_clean.csv"
 
+    def child(self, name: str) -> RunPaths:
+        """Sub-run untuk satu kelompok data: ``<run>/datasets/<name>``.
+
+        Tata letaknya sama persis dengan run biasa, sehingga prompt, validator,
+        dan packager tidak perlu tahu apakah ia bekerja di run akar atau unit.
+        """
+        return RunPaths(self.dir / "datasets", name)
+
     def ensure(self) -> RunPaths:
         for directory in (
             self.dir,
