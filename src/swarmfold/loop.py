@@ -16,6 +16,7 @@ from .evidence import EvidenceStore, deepdive_due, next_deepdive_path
 from .kernel import KernelSession, NotebookWriter
 from .llm import ModelClient, ModelError, ModelTurn
 from .phases import PHASES, PhaseController, PromptLibrary
+from .report import ReportError, render_slots
 from .runtime import (
     RunPaths,
     StatusStore,
@@ -622,8 +623,18 @@ class AgentLoop:
             if not error.startswith("evidence: "):
                 self.status.warn(error)
 
+        # CONTRACTS.md §8: laporan ditulis sebagai markdown berslot dan baru
+        # terbit setelah slotnya diganti. Tanpa langkah ini laporan sampai ke
+        # pembaca masih berisi `{{E-016}}`.
+        report_error = ""
+        if self.paths.report_file.exists():
+            report_error = self._render_report()
+            if report_error:
+                self.errors.append(f"report: {report_error}")
+                self.status.warn(f"report: {report_error}")
+
         status = toolbox.ctx.finish_status or "partial"
-        if problems or toolbox.ctx.fatal:
+        if problems or report_error or toolbox.ctx.fatal:
             # CONTRACTS.md §4: pelanggaran validasi menolak publish. Paket tetap
             # dibuat untuk status failed, tetapi sebagai laporan "analisis
             # terhenti", bukan deliverable yang tampak sukses.
@@ -644,6 +655,7 @@ class AgentLoop:
                 "clean_data": "derived/01_clean.csv" if self.paths.clean_data_file.exists() else "",
             },
             "verification": {"rerun": "skipped", "mismatches": problems},
+            "report": {"rendered": not report_error, "error": report_error},
             "summary": toolbox.ctx.finish_summary or "run berhenti tanpa ringkasan model",
             "finished_at": utc_now(),
         }
@@ -665,6 +677,26 @@ class AgentLoop:
             errors=self.errors,
             report_written=self.paths.report_file.exists(),
         )
+
+    def _render_report(self) -> str:
+        """Ganti slot laporan dengan nilainya; kembalikan pesan galat bila gagal.
+
+        Templat disimpan terpisah (`laporan.template.md`) karena laporan terbit
+        hanya boleh berisi angka, sementara templat berguna untuk audit.
+        """
+        template = self.paths.report_file.read_text(encoding="utf-8", errors="replace")
+        try:
+            rendered = render_slots(
+                template,
+                store=self.store,
+                completed=[name for name in PHASES if self.controller.is_completed(name)],
+                audited=self.controller.is_completed("F6"),
+            )
+        except ReportError as exc:
+            return str(exc)
+        atomic_write_text(self.paths.report_template_file, template)
+        atomic_write_text(self.paths.report_file, rendered)
+        return ""
 
     def _skipped(self) -> list[dict[str, str]]:
         return [

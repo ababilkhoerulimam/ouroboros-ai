@@ -117,6 +117,11 @@ class RunPaths:
         return self.dir / "laporan.md"
 
     @property
+    def report_template_file(self) -> Path:
+        """Laporan sebelum slot dirender; disimpan supaya bisa diaudit."""
+        return self.dir / "laporan.template.md"
+
+    @property
     def clean_data_file(self) -> Path:
         return self.derived_dir / "01_clean.csv"
 

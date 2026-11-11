@@ -292,7 +292,7 @@ Aturan renderer:
 
 | Slot | Diganti dengan | Gagal jika |
 |---|---|---|
-| `{{E-###}}` | `display` dari finding | id tidak ada, `verified: false`, atau fase tidak selesai |
+| `{{E-###}}` | `display` dari finding | id tidak ada, `verified: false`, atau fase tidak selesai sementara F6 belum mengaudit |
 | `{{E-###.chart}}` | path gambar relatif | finding tidak punya `chart` |
 | `{{E-###.value}}` | angka mentah + satuan | `unit` kosong |
 
