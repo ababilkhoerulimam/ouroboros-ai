@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    image: swarmfold:local
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./runs:/runs
+      - ./inbox:/inbox:ro
+    restart: unless-stopped

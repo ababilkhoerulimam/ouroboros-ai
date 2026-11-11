@@ -1,0 +1,93 @@
+"""Konfigurasi runtime dari environment.
+
+Tidak ada nilai rahasia di dalam kode. API key hanya dibaca dari environment dan
+tidak pernah ikut ke `repr`, log, atau artefak run.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+
+DEFAULT_MODEL = "ag/gemini-3.8-flash-high"
+
+
+class ConfigError(RuntimeError):
+    """Konfigurasi wajib tidak lengkap atau tidak masuk akal."""
+
+
+def _env_int(env: Mapping[str, str], name: str, default: int, minimum: int = 1) -> int:
+    raw = env.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} harus berupa angka bulat, bukan {raw!r}") from exc
+    if value < minimum:
+        raise ConfigError(f"{name} minimal {minimum}, bukan {value}")
+    return value
+
+
+@dataclass(frozen=True)
+class Settings:
+    api_key: str | None
+    base_url: str | None
+    model: str
+    max_cells: int
+    cell_timeout_s: int
+    stall_cells: int
+    deepdive_every: int
+    data_root: Path
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
+        source = os.environ if env is None else env
+        base_url = (source.get("SWARMFOLD_BASE_URL") or "").strip().rstrip("/") or None
+        api_key = (source.get("SWARMFOLD_API_KEY") or "").strip() or None
+        model = (source.get("SWARMFOLD_MODEL") or "").strip() or DEFAULT_MODEL
+        data_root = Path((source.get("SWARMFOLD_DATA_ROOT") or "./runs").strip())
+        return cls(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            max_cells=_env_int(source, "SWARMFOLD_MAX_CELLS", 120),
+            cell_timeout_s=_env_int(source, "SWARMFOLD_CELL_TIMEOUT_S", 300),
+            stall_cells=_env_int(source, "SWARMFOLD_STALL_CELLS", 3),
+            deepdive_every=_env_int(source, "SWARMFOLD_DEEPDIVE_EVERY", 10),
+            data_root=data_root,
+        )
+
+    def require_model(self) -> tuple[str, str]:
+        """Kembalikan (base_url, api_key) atau gagal dengan pesan yang jelas."""
+        missing = []
+        if not self.base_url:
+            missing.append("SWARMFOLD_BASE_URL")
+        if not self.api_key:
+            missing.append("SWARMFOLD_API_KEY")
+        if missing:
+            raise ConfigError(
+                "konfigurasi model belum lengkap: " + ", ".join(missing) + " (lihat .env.example)"
+            )
+        assert self.base_url is not None and self.api_key is not None
+        return self.base_url, self.api_key
+
+    def public_dict(self) -> dict[str, object]:
+        """Bagian konfigurasi yang aman ditulis ke status.json dan log."""
+        return {
+            "model": self.model,
+            "max_cells": self.max_cells,
+            "cell_timeout_s": self.cell_timeout_s,
+            "stall_cells": self.stall_cells,
+            "deepdive_every": self.deepdive_every,
+            "base_url_configured": self.base_url is not None,
+        }
+
+    def __repr__(self) -> str:  # pragma: no cover - bentuk aman untuk log
+        key_state = "set" if self.api_key else "unset"
+        return (
+            f"Settings(model={self.model!r}, base_url_configured={self.base_url is not None}, "
+            f"api_key={key_state}, max_cells={self.max_cells})"
+        )
