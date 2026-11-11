@@ -65,6 +65,18 @@ def test_finish_before_f7_forces_writer(run: RunPaths, settings) -> None:
     assert outcome.status in {"ok", "partial"}
 
 
+def test_report_rules_load_only_in_f7(run: RunPaths, settings) -> None:
+    loop = AgentLoop(run, settings, ScriptedModel([]), Brief())
+
+    loop.controller.force("F6")
+    assert "You are not analysing anything" not in loop._state_text()
+
+    loop.controller.force("F7")
+    text = loop._state_text()
+    assert "You are not analysing anything" in text, "report.md harus ikut dimuat di F7"
+    assert text.count("Nine sections, in this order") == 1, "struktur laporan tidak boleh dobel"
+
+
 def test_validator_rejects_evidence_without_artifact(run: RunPaths, settings) -> None:
     bad = {
         "phase": "F1",

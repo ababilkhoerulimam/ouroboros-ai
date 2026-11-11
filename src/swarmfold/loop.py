@@ -344,22 +344,25 @@ class AgentLoop:
         phase = self.controller.current or "F1"
         completed = [name for name in PHASES if self.controller.is_completed(name)]
         remaining = max(self.settings.deepdive_every - self.cells_since_checkpoint, 0)
-        return "\n\n".join(
-            [
-                self.prompts.state_block(
-                    phase=phase,
-                    cell=self.cells_run,
-                    evidence_count=self.store.count(),
-                    allowed=self.controller.allowed_targets(),
-                    phase_completed=completed,
-                    cells_in_phase=self.cells_run - self.phase_start_cell,
-                    evidence_in_phase=self.store.count(phase),
-                    checkpoint_in=remaining,
-                    stalls=self.stalls,
-                ),
-                self.prompts.phase(phase),
-            ]
-        )
+        parts = [
+            self.prompts.state_block(
+                phase=phase,
+                cell=self.cells_run,
+                evidence_count=self.store.count(),
+                allowed=self.controller.allowed_targets(),
+                phase_completed=completed,
+                cells_in_phase=self.cells_run - self.phase_start_cell,
+                evidence_in_phase=self.store.count(phase),
+                checkpoint_in=remaining,
+                stalls=self.stalls,
+            ),
+            self.prompts.phase(phase),
+        ]
+        if phase == "F7":
+            # loop.md: aturan tulis laporan hanya dimuat di F7. Tanpa ini model
+            # menulis laporan tanpa aturan slot dan bahasa yang dijanjikan F7.
+            parts.append(self.prompts.module("report"))
+        return "\n\n".join(parts)
 
     def _maybe_checkpoint(self, messages: list[dict[str, Any]]) -> None:
         if self.checkpoint_pending is not None:

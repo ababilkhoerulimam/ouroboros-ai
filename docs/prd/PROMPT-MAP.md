@@ -124,6 +124,11 @@ Gateway model sudah menambahkan ± 2.000 token sebelum prompt kita dihitung
 | `report.md` | hanya F7 | ± 900 token |
 | `style.md`, `evidence.md` | setiap turn | ± 800 token |
 
+`report.md` disuntik `AgentLoop._state_text()` saat fase F7, bukan dirujuk saja:
+sebelumnya `loop.md` dan brief F7 menjanjikan aturannya, tetapi berkasnya tidak
+pernah dimuat. Brief fase tidak mengulang isinya, supaya aturan tidak punya dua
+salinan yang bisa menyimpang.
+
 Total per turn biasa: ± 4.100 token prompt + 2.000 overhead gateway.
 
 Yang **tidak** boleh terjadi: memuat seluruh `phases/` sekaligus, atau menyalin
@@ -160,14 +165,15 @@ menggantikan berkas bernama sama di `prompts/`, sisanya mewarisi prompt dasar
 | Pack | Dipilih untuk | Mengganti | Mewarisi |
 |---|---|---|---|
 | `business` | data dengan nominal + tanggal/entitas | tidak ada (default) | semua |
-| `generic` | data dengan ukuran + pembanding, tanpa sinyal bisnis | `system.md`, `phases/F1..F5.md`, `phases/F7.md` | `loop.md`, `style.md`, `evidence.md`, `tools.md`, `deepdive.md`, `phases/F6.md`, `report.md` |
+| `generic` | data dengan ukuran + pembanding, tanpa sinyal bisnis | `system.md`, `phases/F1..F5.md`, `phases/F7.md`, `report.md` | `loop.md`, `style.md`, `evidence.md`, `tools.md`, `deepdive.md`, `phases/F6.md` |
 
 `generic` menulis ulang doktrin yang bergantung pada pendapatan: tabel metrik F1
 menjadi tabel peran kolom, F2 menjadi profil distribusi dan perbandingan kelompok,
 F3 menjadi dekomposisi jumlah/komposisi/level, F4 menjadi cohort entitas dan funnel
 tahap, F5 menjadi skenario dalam satuan data sendiri, F7 menjadi keputusan yang
-menggerakkan ukuran terukur. F6 tidak diubah karena isinya audit statistik, bukan
-doktrin bisnis.
+menggerakkan ukuran terukur, dan `report.md` menjadi judul bagian generik ("Apa yang
+ada di data", "Kenapa berbeda", "Kelompok dan waktu"). F6 tidak diubah karena isinya
+audit statistik, bukan doktrin bisnis.
 
 Biaya token pack `generic` setara pack `business`: berkas pengganti berukuran
 sebanding, dan tidak ada fase yang memuat dua versi sekaligus.

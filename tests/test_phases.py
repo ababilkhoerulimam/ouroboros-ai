@@ -263,6 +263,12 @@ def test_generic_pack_overrides_phases_and_falls_back():
     assert "pembaca tanpa latar statistik" in library.system()
     assert "What Is in the Data" in library.phase("F2")
     assert "Penantang" in library.phase("F6"), "F6 generik mewarisi prompt dasar"
+    assert "Nine sections, in this order" not in library.phase("F7"), (
+        "brief F7 tidak boleh mengulang aturan report.md"
+    )
+    report = library.module("report")
+    assert "Apa yang ada di data" in report
+    assert "pembaca tanpa latar statistik" in report, "audience pack dirender di report.md"
 
 
 def test_pack_overrides_files_and_renders_variables(tmp_path):
