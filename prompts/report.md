@@ -45,7 +45,7 @@ dropped.
 | 8 | Yang tidak bisa dijawab | bullets from `cannot_answer` | at most 5 bullets |
 | 9 | Lampiran | data dictionary, cleaning log, evidence table, method note | unlimited |
 
-Section 1 must stand alone. If the shop owner reads only that page, they still know
+Section 1 must stand alone. If the reader reads only that page, they still know
 what to do.
 
 ## Slots
@@ -69,7 +69,7 @@ Rules:
 
 ## Language
 
-Bahasa Indonesia, for someone who runs a shop.
+Bahasa Indonesia, for {{audience}}.
 
 | Rule | Limit |
 |---|---|
@@ -78,7 +78,7 @@ Bahasa Indonesia, for someone who runs a shop.
 | Technical terms | translate at point of use, no glossary required |
 | Statistics in body | none; move to appendix |
 | Tone | neutral and specific; never blame people |
-| Address | "Anda" for the owner, not "kita" |
+| Address | "Anda", not "kita" |
 
 Banned, in any form:
 

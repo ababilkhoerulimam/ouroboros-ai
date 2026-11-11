@@ -67,8 +67,8 @@ acceptable; a stalled run is not.
 
 ## Language
 
-- Prose, `notes/`, and the final report: Bahasa Indonesia, plain enough for a shop
-  owner with no statistics background.
+- Prose, `notes/`, and the final report: Bahasa Indonesia, plain enough for
+  {{audience}}; no statistics background is assumed.
 - Code, identifiers, column names, log keys, and JSON keys: English.
 - In the report, format numbers the Indonesian way (comma decimal, dot thousands).
   In `evidence.json`, always keep the raw machine value.

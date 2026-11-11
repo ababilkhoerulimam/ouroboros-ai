@@ -252,6 +252,20 @@ def test_default_prompt_library_uses_business_pack():
     assert library.system().strip()
 
 
+def test_audience_slot_reaches_business_prompts():
+    default = PromptLibrary(pack="business")
+    assert "pemilik usaha kecil" in default.system()
+    assert "pemilik usaha kecil" in default.module("report")
+
+    override = PromptLibrary(
+        pack="business", audience="analis laboratorium", domain="laboratorium"
+    )
+    assert "analis laboratorium" in override.system()
+    assert "analis laboratorium" in override.module("report")
+    assert "shop" not in override.system()
+    assert "shop" not in override.module("report")
+
+
 def test_generic_pack_overrides_phases_and_falls_back():
     library = PromptLibrary(pack="generic")
 

@@ -24,7 +24,7 @@ A cell is a question with an answer printed at the bottom. Nothing else.
 |---|---|---|
 | `print("=" * 60)` | decorative chrome | nothing, or a blank line |
 | `print("[ STAGE 1 ]")` | unparseable in a log | `print("step=grain_check")` |
-| emoji, arrows, symbols | noise in a document the owner reads | plain words |
+| emoji, arrows, symbols | noise in a document the reader reads | plain words |
 | `# loop over each row` | translates the next line | delete it |
 | `# TODO`, `pass`, `...` | incomplete behavior | finish the branch or drop it |
 | `df.head(50)` | buries the number you needed | `.head(10)` plus `.shape` |
@@ -77,7 +77,7 @@ average three cells later. Rename it before you use it.
 
 ### Text inside the chart
 
-- Indonesian, because the owner reads the notebook too.
+- Indonesian, because the reader reads the notebook too.
 - Axis labels carry the unit: "Pendapatan (Rp juta)", "Jumlah pesanan".
 - The subtitle or first annotation states the period and the comparison base.
 - Numbers on the chart use the same rounding as the printed table.
@@ -141,7 +141,7 @@ plt.close(fig)
 ```
 
 Numbers first, chart second. The table is what the evidence file cites; the image is
-what the owner looks at.
+what the reader looks at.
 
 ## Prohibited
 
