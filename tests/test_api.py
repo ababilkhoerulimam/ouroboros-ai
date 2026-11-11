@@ -212,3 +212,25 @@ def test_sweep_interrupted_frees_package(tmp_path: Path) -> None:
     assert done["summary"] == "run terputus: proses berhenti sebelum selesai"
     assert read_json(finished.status_file)["state"] == "done"
     assert client.get("/api/runs/2026-01-01-stale/paket").status_code == 200
+
+
+def test_create_app_tidak_menyapu_run_yang_sedang_hidup(tmp_path: Path) -> None:
+    # `import swarmfold.api` tidak boleh punya efek samping: run 2026-11-11-049006
+    # mati di F2 ketika suite tes dijalankan, karena create_app menyapu ./runs.
+    settings = Settings(
+        api_key="k",
+        base_url="http://model.local/v1",
+        model="m",
+        max_cells=5,
+        cell_timeout_s=30,
+        stall_cells=2,
+        deepdive_every=10,
+        data_root=tmp_path / "runs",
+    )
+    live = RunPaths(settings.data_root, "2026-01-01-live").ensure()
+    StatusStore(live).create()
+    StatusStore(live).update(state="running")
+
+    create_app(settings, FakeRunner())
+
+    assert read_json(live.status_file)["state"] == "running"

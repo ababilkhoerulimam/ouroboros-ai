@@ -8,7 +8,8 @@ import queue
 import shutil
 import threading
 import zipfile
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -205,11 +206,21 @@ def create_app(
     runner: JobRunner | None = None,
 ) -> FastAPI:
     resolved = settings or Settings.from_env()
-    app = FastAPI(title="agent-swarmfold", version=__version__)
-    try:
-        sweep_interrupted(resolved.data_root)
-    except Exception:  # noqa: BLE001 - pemulihan bersifat best effort
-        _log.warning("sweep_interrupted gagal saat create_app")
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Sapuan run tertinggal hanya boleh terjadi saat server benar-benar
+        # mulai melayani. Sebelumnya ini jalan di dalam create_app, sehingga
+        # setiap `import swarmfold.api` (termasuk pytest) menandai run yang
+        # sedang hidup sebagai interrupted: run 2026-11-11-049006 mati di F2
+        # ketika suite tes dijalankan.
+        try:
+            sweep_interrupted(resolved.data_root)
+        except Exception:  # noqa: BLE001 - pemulihan bersifat best effort
+            _log.warning("sweep_interrupted gagal saat startup")
+        yield
+
+    app = FastAPI(title="agent-swarmfold", version=__version__, lifespan=lifespan)
     jobs = runner or JobRunner(resolved)
     app.state.settings = resolved
     app.state.jobs = jobs
