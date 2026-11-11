@@ -289,3 +289,59 @@ def test_repr_tidak_memuat_api_key() -> None:
     assert MODEL in text
     assert "model.local:8080" in text
     assert "/v1" not in text
+
+
+def _empty_body() -> dict:
+    """Balasan gateway yang diterima tetapi tidak memuat apa pun."""
+    return {
+        "id": "chatcmpl-kosong",
+        "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": None}, "finish_reason": "stop"}
+        ],
+        "usage": {"prompt_tokens": 110097, "completion_tokens": 0},
+    }
+
+
+def test_balasan_kosong_diulang_lalu_berhasil() -> None:
+    # Run 2026-11-11-eec3dc mati di F5 karena tiga balasan kosong berurutan.
+    # Balasan kosong bukan jawaban; ia gangguan gateway yang boleh diulang.
+    count = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        count["n"] += 1
+        if count["n"] == 1:
+            return _json_response(_empty_body())
+        return _json_response(_ok_body())
+
+    turn = _client(handler, retry_delays=(0, 0)).chat([{"role": "user", "content": "halo"}])
+
+    assert count["n"] == 2
+    assert turn.content == "selesai"
+
+
+def test_balasan_kosong_terus_menjadi_model_error() -> None:
+    count = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        count["n"] += 1
+        return _json_response(_empty_body())
+
+    with pytest.raises(ModelError) as excinfo:
+        _client(handler, retry_delays=(0, 0)).chat([{"role": "user", "content": "halo"}])
+
+    assert count["n"] == 3
+    assert "kosong" in str(excinfo.value)
+    assert "110097" in str(excinfo.value)
+
+
+def test_balasan_dengan_penalaran_saja_tidak_dianggap_kosong() -> None:
+    count = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        count["n"] += 1
+        return _json_response(_ok_body(content=None, reasoning_content="mempertimbangkan"))
+
+    turn = _client(handler, retry_delays=(0, 0)).chat([{"role": "user", "content": "halo"}])
+
+    assert count["n"] == 1
+    assert turn.reasoning_content == "mempertimbangkan"

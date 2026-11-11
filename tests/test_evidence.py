@@ -105,16 +105,44 @@ def test_artifact_without_display_is_reported(tmp_path):
 
 
 def test_numeric_artifact_rendering_is_accepted(tmp_path):
-    # Dulu tes ini lolos karena `_contains_rendering` menerima `str(value)`:
-    # artefak hanya memuat -0.124, bukan display "-12,4%". Aturan sekarang
-    # menuntut `display` sebagai token utuh, jadi harapannya dibalik.
+    # CONTRACTS.md §4: artefak harus memuat `display` **atau nilai numerik
+    # setara**. Cell mencetak `key=value` gaya Python (-0.124), `display` memakai
+    # bentuk Indonesia (-12,4%); keduanya angka yang sama.
     store = _ok_setup(tmp_path, text="revenue_q3=-0.124\n")
     store.add("F3", _finding(display="-12,4%"))
+
+    assert store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH) == []
+
+
+def test_rupiah_display_matches_raw_integer_rendering(tmp_path):
+    # Bentuk yang muncul di run 2026-11-11-eec3dc: `Rp 19.204.513` untuk
+    # `range_spread=19204513`.
+    store = _ok_setup(tmp_path, text="anchor=251212191 | range_spread=19204513\n")
+    store.add(
+        "F3",
+        _finding(value=19204513, unit="IDR", display="Rp 19.204.513"),
+    )
+
+    assert store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH) == []
+
+
+def test_rounded_display_matches_printed_ratio(tmp_path):
+    # `-8,62%` adalah bentuk terbulatkan dari p50=-0.086196.
+    store = _ok_setup(tmp_path, text="n=2 | p50=-0.086196\n")
+    store.add("F3", _finding(value=-0.086196, display="-8,62%"))
+
+    assert store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH) == []
+
+
+def test_display_number_absent_from_artifact_is_rejected(tmp_path):
+    # Angka yang tidak pernah dicetak tetap ditolak, walau formatnya benar.
+    store = _ok_setup(tmp_path, text="anchor=251212191\n")
+    store.add("F3", _finding(value=19204513, unit="IDR", display="Rp 19.204.513"))
 
     errors = store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH)
 
     assert len(errors) == 1
-    assert "-12,4%" in errors[0]
+    assert "Rp 19.204.513" in errors[0]
 
 
 def test_artifact_must_be_the_cited_cell_output(tmp_path):
@@ -268,3 +296,23 @@ def test_validate_all_prefixes_phase(tmp_path):
 
     assert len(errors) == 1
     assert errors[0].startswith("F3: ")
+
+
+def test_point_display_matches_pp_suffix_rendering(tmp_path):
+    # Cell mencetak `vol_pct_points=-8.70pp`; display menulis
+    # `-8,70 poin persentase`. Satuan yang menempel pada angka tidak boleh
+    # membuat angka itu dianggap bagian dari identifier.
+    store = _ok_setup(tmp_path, text="vol_pct_points=-8.70pp\n")
+    store.add("F3", _finding(value=-8.7, unit="pp", display="-8,70 poin persentase"))
+
+    assert store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH) == []
+
+
+def test_number_inside_identifier_is_not_counted(tmp_path):
+    # `sku_induk_3m=816449942` tidak boleh menyediakan angka 3 untuk `value: 3`.
+    store = _ok_setup(tmp_path, text="sku_induk_3m=816449942\n")
+    store.add("F3", _finding(value=3, unit="count", display="3 produk"))
+
+    errors = store.validate("F3", cells_index=_cells("ok"), dataset_hash=DATASET_HASH)
+
+    assert len(errors) == 1

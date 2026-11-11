@@ -463,7 +463,13 @@ class EvidenceStore:
                 )
             else:
                 errors.extend(
-                    self._check_file(ident, "artifact", normalised, display=display)
+                    self._check_file(
+                        ident,
+                        "artifact",
+                        normalised,
+                        display=display,
+                        value=finding.get("value"),
+                    )
                 )
 
         chart = finding.get("chart")
@@ -488,6 +494,7 @@ class EvidenceStore:
         relative: str,
         *,
         display: Any = None,
+        value: Any = None,
     ) -> list[str]:
         path = self._resolve(relative)
         if path is None:
@@ -497,7 +504,7 @@ class EvidenceStore:
         if field != "artifact":
             return []
         text = path.read_text(encoding="utf-8", errors="replace")
-        if not _contains_rendering(text, display):
+        if not _contains_rendering(text, display, value):
             return [
                 f"{ident}: artifact {relative!r} tidak memuat display {display!r}"
             ]
@@ -513,21 +520,59 @@ class EvidenceStore:
         return candidate
 
 
-def _contains_rendering(text: str, display: Any) -> bool:
-    """Apakah artefak memuat `display` sebagai token utuh.
+_TEXT_NUMBER = re.compile(
+    r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?(?:[eE][-+]?\d+)?(?!\d|\.\d)"
+)
+_DISPLAY_NUMBER = re.compile(r"(?<![\w.,])[-+]?\d[\d.]*(?:,\d+)?")
 
-    Hanya `display` yang diterima: `str(value)` membuat `value: 3` cocok dengan
-    sembarang keluaran yang memuat digit 3 (mis. `rows=3`), dan pencocokan
-    substring membuat `display: "3"` cocok dengan `rows=13`. Token utuh berarti
-    baris (setelah di-strip) sama persis dengan `display`, atau `display`
-    diapit karakter non-alfanumerik. Bentuk Indonesia seperti `-12,4%` memang
-    sudah menjadi isi `display`, jadi tidak perlu render angka lain.
+
+def _contains_rendering(text: str, display: Any, value: Any = None) -> bool:
+    """Apakah artefak memuat `display` sebagai token utuh, atau angkanya.
+
+    Dua bentuk diterima, sesuai CONTRACTS.md §4 (`display` **atau** nilai
+    numerik setara):
+
+    1. `display` muncul sebagai token utuh. Ini bentuk terkuat: tidak ada
+       penafsiran, dan pencocokan substring tetap ditolak sehingga
+       `display: "3"` tidak cocok dengan `rows=13`.
+    2. angka yang dinyatakan `display` muncul sebagai token angka utuh. Cell
+       mencetak `key=value` dengan titik desimal Python
+       (`range_spread=19204513`, `p50=-0.086196`), sedangkan `display` memakai
+       bentuk Indonesia (`Rp 19.204.513`, `-8,62%`). Keduanya menyatakan angka
+       yang sama, jadi saling menolak hanya menghasilkan run yang gagal karena
+       format, bukan karena angka yang salah.
+
+    Pencocokan angka memakai token utuh, bukan substring, sehingga `value: 3`
+    tetap tidak cocok dengan `rows=13`. `value` ikut diperiksa karena `display`
+    boleh berbentuk terbulatkan atau berskala (`Rp 362,4 juta` untuk
+    `value: 362400000`).
     """
     if not _is_text(display):
         return False
     needle = display.strip()
     if not needle:
         return False
+    if _literal_token(text, needle):
+        return True
+
+    numbers = _numbers_in_text(text)
+    if not numbers:
+        return False
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if _matches(numbers, float(value), 0.0):
+            return True
+        # `unit: ratio` menyimpan 0,124; `display` menulis `12,4%`.
+        if "%" in needle and _matches(numbers, float(value) * 100.0, 0.0):
+            return True
+    primary = _display_number(needle)
+    if primary is None:
+        return False
+    target, tolerance = primary
+    return _matches(numbers, target, tolerance)
+
+
+def _literal_token(text: str, needle: str) -> bool:
+    """`needle` muncul sebagai token utuh, bukan bagian dari kata/angka lain."""
     for line in text.splitlines():
         if line.strip() == needle:
             return True
@@ -542,6 +587,45 @@ def _contains_rendering(text: str, display: Any) -> bool:
         if not before.isalnum() and not after.isalnum():
             return True
         start = index + 1
+
+
+def _numbers_in_text(text: str) -> list[float]:
+    """Angka pada keluaran cell: titik desimal, koma pemisah ribuan."""
+    found: list[float] = []
+    for match in _TEXT_NUMBER.finditer(text):
+        try:
+            found.append(float(match.group(0).replace(",", "")))
+        except ValueError:
+            continue
+    return found
+
+
+def _display_number(display: str) -> tuple[float, float] | None:
+    """Angka utama `display` beserta toleransi pembulatannya.
+
+    Bentuk Indonesia: titik memisah ribuan, koma memisah desimal. Toleransi
+    setengah digit terakhir karena `display` memang bentuk terbulatkan
+    (`-8,62%` untuk `-0.086196`).
+    """
+    match = _DISPLAY_NUMBER.search(display)
+    if match is None:
+        return None
+    token = match.group(0)
+    decimals = len(token.split(",")[-1]) if "," in token else 0
+    token = token.replace(".", "").replace(",", ".")
+    try:
+        number = float(token)
+    except ValueError:
+        return None
+    tolerance = 0.5 * 10 ** -decimals if decimals else 0.0
+    return number, tolerance
+
+
+def _matches(numbers: list[float], target: float, tolerance: float) -> bool:
+    for number in numbers:
+        if abs(number - target) <= tolerance + abs(target) * 1e-9:
+            return True
+    return False
 
 
 def next_deepdive_path(paths: RunPaths) -> Path:

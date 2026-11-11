@@ -155,7 +155,23 @@ class ModelClient:
                     raise ModelError(self._http_message(response))
 
                 latency_ms = int(round((time.perf_counter() - started) * 1000))
-                return self._parse(response, latency_ms)
+                turn = self._parse(response, latency_ms)
+                if turn.content.strip() or turn.reasoning_content or turn.tool_calls:
+                    return turn
+                # Pesan yang benar-benar kosong (tanpa prosa, tanpa penalaran,
+                # tanpa tool call) bukan jawaban: itu gangguan gateway. Diukur
+                # pada run 2026-11-11-eec3dc: tiga balasan kosong berurutan
+                # mematikan run di F5 padahal permintaan yang sama dengan prompt
+                # 140 ribu token dijawab normal. Mengulang jauh lebih murah
+                # daripada kehilangan seluruh run.
+                if attempt >= self._max_retries:
+                    raise ModelError(
+                        "model membalas kosong setelah "
+                        f"{attempt + 1} percobaan: finish_reason="
+                        f"{turn.finish_reason or '-'} "
+                        f"prompt_tokens={(turn.usage or {}).get('prompt_tokens', 0)}"
+                    )
+                time.sleep(self._delay(attempt))
 
         # Tidak tercapai: loop selalu return atau raise.
         raise ModelError("panggilan model berakhir tanpa respons")  # pragma: no cover
