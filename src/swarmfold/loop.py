@@ -16,8 +16,16 @@ from .evidence import EvidenceStore, deepdive_due, next_deepdive_path
 from .kernel import KernelSession, NotebookWriter
 from .llm import ModelClient, ModelError, ModelTurn
 from .phases import PHASES, PhaseController, PromptLibrary
-from .runtime import RunPaths, StatusStore, atomic_write_json, utc_now
+from .runtime import (
+    RunPaths,
+    StatusStore,
+    atomic_write_json,
+    atomic_write_text,
+    read_json,
+    utc_now,
+)
 from .tools import ToolBox, ToolContext, hash_tree
+from .triage import MODE_CLEANING, MODE_INSUFFICIENT, Triage, triage_profile
 
 MAX_NUDGES = 2
 #: Turn berurutan tanpa satu pun tool yang berhasil sebelum run dihentikan.
@@ -89,12 +97,17 @@ class AgentLoop:
         self.errors: list[str] = []
         self.phase_start_cell = 0
         self.dataset_hash = ""
+        self.mode = "full"
+        self.triage: dict[str, Any] = {}
 
     # -- orkestrasi ---------------------------------------------------------
 
     def run(self) -> RunOutcome:
         self.paths.ensure()
         self._prepare_status()
+        triage = self._apply_triage()
+        if triage.mode == MODE_INSUFFICIENT:
+            return self._finish_insufficient(triage)
         tree = hash_tree(self.paths.data_dir)
         if not tree:
             return self._fail("data/ kosong: ingest tidak menghasilkan berkas kerja")
@@ -188,11 +201,25 @@ class AgentLoop:
                 return
 
             if toolbox.ctx.finished:
+                # F1.md: laporan "data belum siap" ditulis model lalu finish
+                # blocked/failed. Run berhenti di situ, tidak dipaksa ke F7.
+                if toolbox.ctx.finish_status in {"blocked", "failed"}:
+                    return
                 if self.controller.current != "F7":
                     self._force_f7(messages, toolbox)
                     toolbox.ctx.finished = False
                     continue
                 return
+            if (
+                self.mode == MODE_CLEANING
+                and self.controller.current != "F7"
+                and self.controller.is_completed("F1")
+            ):
+                # Mode cleaning berhenti setelah F1: laporan kualitas data,
+                # tanpa F2-F6.
+                self._force_f7(messages, toolbox)
+                toolbox.ctx.finished = False
+                continue
             if self.controller.current == "F7" and self.paths.report_file.exists():
                 toolbox.ctx.finished = True
                 return
@@ -227,6 +254,13 @@ class AgentLoop:
         return "\n\n---\n\n".join(parts)
 
     def _opening_message(self) -> str:
+        if self.mode == MODE_CLEANING:
+            instruction = (
+                "Mode cleaning: rapikan data di F1, lalu tulis laporan kualitas data. "
+                "F2-F6 tidak dijalankan dan keputusan bisnis tidak boleh dikarang."
+            )
+        else:
+            instruction = "Mulai dari F1. Baca profile.json lebih dulu dengan read_file."
         lines = [
             "## Brief operator",
             self.brief.as_text(),
@@ -234,7 +268,12 @@ class AgentLoop:
             "## Berkas masukan",
             self._profile_summary(),
             "",
-            "Mulai dari F1. Baca profile.json lebih dulu dengan read_file.",
+            "## Mode run",
+            f"mode={self.mode}",
+            f"pack={self.settings.pack}",
+            *[f"- {reason}" for reason in (self.triage.get("reasons") or [])],
+            "",
+            instruction,
         ]
         return "\n".join(lines)
 
@@ -363,17 +402,22 @@ class AgentLoop:
         self.controller.force("F7", "finish dipanggil sebelum F7; laporan tetap wajib terbit")
         self.status.update(state="running", phase="F7")
         self.phase_start_cell = self.cells_run
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "## F7 wajib\n"
-                    "Run belum melewati F7. Tulis laporan sekarang mengikuti report.md: "
-                    "hanya evidence terverifikasi, setiap angka lewat slot, tulis ke `laporan.md` "
-                    "lalu panggil finish."
-                ),
-            }
-        )
+        if self.mode == MODE_CLEANING:
+            content = (
+                "## Laporan kualitas data wajib\n"
+                "Mode cleaning: F2-F6 tidak dijalankan. Tulis `laporan.md` berisi apa yang "
+                "dibersihkan, apa yang tidak bisa dijawab, dan kolom apa yang perlu "
+                "ditambahkan agar analisis penuh bisa dilakukan. Jangan menulis keputusan "
+                'bisnis. Lalu panggil finish("partial") atau finish("blocked").'
+            )
+        else:
+            content = (
+                "## F7 wajib\n"
+                "Run belum melewati F7. Tulis laporan sekarang mengikuti report.md: "
+                "hanya evidence terverifikasi, setiap angka lewat slot, tulis ke `laporan.md` "
+                "lalu panggil finish."
+            )
+        messages.append({"role": "user", "content": content})
 
     # -- penutup ------------------------------------------------------------
 
@@ -389,6 +433,65 @@ class AgentLoop:
             self.status.update(state="running", phase="F1")
         if not self.controller.current:
             self.controller.force("F1", "start")
+
+    def _apply_triage(self) -> Triage:
+        """Nilai kelayakan data dan simpan verdict ke profile.json."""
+        profile = read_json(self.paths.profile_file, {})
+        profile = profile if isinstance(profile, dict) else {}
+        result = triage_profile(profile)
+        profile["triage"] = result.as_dict()
+        atomic_write_json(self.paths.profile_file, profile)
+        self.mode = result.mode
+        self.triage = result.as_dict()
+        self.status.update(mode=result.mode, pack=self.settings.pack)
+        return result
+
+    def _finish_insufficient(self, triage: Triage) -> RunOutcome:
+        """Data terlalu kecil: laporan deterministik tanpa memanggil model."""
+        summary = "data belum siap: " + "; ".join(triage.reasons)
+        self.errors.append(summary)
+        lines = [
+            "# Data belum siap",
+            "",
+            "Data yang diunggah belum bisa dianalisis.",
+            "",
+            "## Yang kurang",
+            *[f"- {reason}" for reason in triage.reasons],
+            "",
+            "## Yang perlu ditambahkan",
+            *[f"- {item}" for item in triage.missing],
+            "",
+        ]
+        atomic_write_text(self.paths.report_file, "\n".join(lines))
+        atomic_write_json(
+            self.paths.done_file,
+            {
+                "status": "failed",
+                "mode": triage.mode,
+                "pack": self.settings.pack,
+                "phases_completed": [],
+                "phases_skipped": [],
+                "deliverables": {
+                    "notebook": "",
+                    "report_md": "laporan.md",
+                    "report_pdf": "",
+                    "clean_data": "",
+                },
+                "verification": {"rerun": "skipped", "mismatches": []},
+                "summary": summary,
+                "finished_at": utc_now(),
+            },
+        )
+        self.status.update(state="failed")
+        return RunOutcome(
+            status="failed",
+            summary=summary,
+            cells=0,
+            evidence=0,
+            charts=0,
+            errors=self.errors,
+            report_written=True,
+        )
 
     def _inputs(self) -> list[dict[str, Any]]:
         import json
@@ -432,6 +535,8 @@ class AgentLoop:
 
         done = {
             "status": status,
+            "mode": self.mode,
+            "pack": self.settings.pack,
             "phases_completed": [name for name in PHASES if self.controller.is_completed(name)],
             "phases_skipped": self._skipped(),
             "deliverables": {
@@ -500,6 +605,8 @@ class AgentLoop:
             self.paths.done_file,
             {
                 "status": "failed",
+                "mode": self.mode,
+                "pack": self.settings.pack,
                 "phases_completed": [],
                 "phases_skipped": [],
                 "deliverables": {},

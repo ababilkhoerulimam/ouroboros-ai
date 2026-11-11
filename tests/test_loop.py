@@ -4,7 +4,9 @@ import json
 from dataclasses import replace
 
 from conftest import ScriptedModel, finish, run_cell, tool_turn
+from synthetic import tulis_catatan
 
+from swarmfold.ingest import ingest
 from swarmfold.loop import AgentLoop, Brief
 from swarmfold.runtime import RunPaths, read_json
 
@@ -161,3 +163,67 @@ def test_status_records_composite_dataset_hash(run: RunPaths, settings) -> None:
     status = read_json(run.status_file)
     assert status["dataset_hash"] == loop.dataset_hash
     assert len(loop.dataset_hash) == 64
+
+
+def _run_dari(tmp_path, settings, sources: list, run_id: str) -> RunPaths:
+    paths = RunPaths(settings.data_root, run_id).ensure()
+    ingest(sources, paths)
+    return paths
+
+
+def test_business_profile_records_full_mode(run: RunPaths, settings) -> None:
+    model = ScriptedModel([tool_turn(finish("blocked", "uji triage"))])
+    loop = AgentLoop(run, settings, model, Brief())
+    loop.run()
+
+    assert loop.mode == "full"
+    assert read_json(run.profile_file)["triage"]["mode"] == "full"
+    assert read_json(run.status_file)["mode"] == "full"
+
+
+def test_cleaning_mode_stops_after_f1(tmp_path, settings) -> None:
+    paths = _run_dari(
+        tmp_path, settings, [tulis_catatan(tmp_path / "catatan.csv")], "2026-01-01-bersih"
+    )
+    turns = [
+        tool_turn(run_cell("print(1)", "rapikan data")),
+        tool_turn(("advance_phase", {"target": "F2", "reason": "F1 selesai"})),
+    ]
+    loop = AgentLoop(paths, settings, ScriptedModel(turns), Brief())
+    outcome = loop.run()
+
+    assert loop.mode == "cleaning_only"
+    assert loop.controller.current == "F7", "mode cleaning harus melompat ke F7"
+    assert outcome.cells == 1, "F2 tidak boleh menjalankan cell"
+    done = read_json(paths.done_file)
+    assert done["mode"] == "cleaning_only"
+    assert "F2" not in done["phases_completed"]
+
+
+def test_insufficient_data_writes_report_without_model(tmp_path, settings) -> None:
+    source = tmp_path / "mini.csv"
+    source.write_text("a,b\n1,2\n", encoding="utf-8")
+    paths = _run_dari(tmp_path, settings, [source], "2026-01-01-mini")
+    model = ScriptedModel([])
+
+    outcome = AgentLoop(paths, settings, model, Brief()).run()
+
+    assert model.calls == 0, "data terlalu kecil tidak perlu memanggil model"
+    assert outcome.status == "failed"
+    assert paths.report_file.is_file()
+    done = read_json(paths.done_file)
+    assert done["status"] == "failed"
+    assert done["mode"] == "insufficient"
+    assert "belum siap" in done["summary"]
+
+
+def test_finish_blocked_stops_without_forcing_f7(run: RunPaths, settings) -> None:
+    turns = [
+        tool_turn(run_cell("print(4)", "hitung baris")),
+        tool_turn(finish("blocked", "data belum siap")),
+    ]
+    loop = AgentLoop(run, settings, ScriptedModel(turns), Brief())
+    outcome = loop.run()
+
+    assert loop.controller.current == "F1", "blocked tidak boleh dipaksa ke F7"
+    assert outcome.status == "blocked"

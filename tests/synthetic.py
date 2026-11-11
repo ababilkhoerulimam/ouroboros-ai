@@ -43,6 +43,15 @@ def total_omzet() -> int:
     return sum(qty * HARGA[produk] for _, produk, qty in PENJUALAN)
 
 
+CATATAN: tuple[tuple[str, str], ...] = (
+    ("Ani", "stok kopi menipis"),
+    ("Budi", "rak depan perlu dirapikan"),
+    ("Citra", "komplain kemasan rusak"),
+    ("Dewi", "minta kirim ulang"),
+    ("Eko", "catatan kosong"),
+)
+
+
 def tulis_penjualan(path: Path) -> Path:
     """Tulis `penjualan.csv`; `total` = qty * harga, tanpa pemisah ribuan."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -62,4 +71,18 @@ def tulis_pelanggan(path: Path) -> Path:
         writer = csv.writer(handle)
         writer.writerow(["pelanggan_id", "nama", "kota", "segmen"])
         writer.writerows(PELANGGAN)
+    return path
+
+
+def tulis_catatan(path: Path) -> Path:
+    """Tulis CSV non-bisnis: tanpa nominal, tanggal, atau identifier.
+
+    Dipakai untuk memastikan triage menurunkan run ke mode cleaning, bukan
+    memaksa F1-F7 pada data yang tidak punya sinyal bisnis.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["nama", "catatan"])
+        writer.writerows(CATATAN)
     return path
