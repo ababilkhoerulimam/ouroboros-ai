@@ -90,6 +90,16 @@ class PhaseController:
         return self._current
 
     def is_completed(self, phase: str) -> bool:
+        """True hanya bila fase ditutup dengan status ok.
+
+        Fase yang ditandai tidak berlaku (`ok=False`) tetap tercatat tertutup
+        untuk prasyarat, tetapi bukan "selesai": ia harus muncul di
+        `phases_skipped`, bukan `phases_completed` (CONTRACTS.md §7).
+        """
+        return self._completed.get(phase) is True
+
+    def is_closed(self, phase: str) -> bool:
+        """True bila fase sudah ditutup, baik selesai maupun tidak berlaku."""
         return phase in self._completed
 
     def returns_used(self, phase: str) -> int:
@@ -131,8 +141,15 @@ class PhaseController:
         here = PHASES.index(self._current)
         return [target for target in legal if PHASES.index(target) < here]
 
-    def advance(self, target: str, reason: str = "") -> AdvanceResult:
-        """Pindah ke ``target`` bila sah; penolakan menyebut prasyarat yang kurang."""
+    def advance(
+        self, target: str, reason: str = "", *, close_current: bool | None = None
+    ) -> AdvanceResult:
+        """Pindah ke ``target`` bila sah; penolakan menyebut prasyarat yang kurang.
+
+        ``close_current`` menutup fase aktif sebagai bagian dari transisi yang
+        sama (``True`` = selesai, ``False`` = tidak berlaku). Penutupan terjadi
+        setelah semua pemeriksaan lolos, sehingga penolakan tidak memutasi state.
+        """
         allowed = self.allowed_targets()
         current = self._current
 
@@ -157,7 +174,9 @@ class PhaseController:
 
         forward = current == START or PHASES.index(target) > PHASES.index(current)
         if forward:
-            ready, why = self._prerequisite()
+            ready, why = self._prerequisite(
+                pending_close=close_current if current != START else None
+            )
             if not ready:
                 return AdvanceResult(False, target, allowed, why)
 
@@ -173,6 +192,8 @@ class PhaseController:
                 )
             self._returns[target] = used + 1
 
+        if close_current is not None and current != START:
+            self._completed[current] = bool(close_current)
         self._current = target
         self._last_reason = reason
         self._save()
@@ -180,13 +201,18 @@ class PhaseController:
 
     # -- prasyarat ----------------------------------------------------------
 
-    def _prerequisite(self) -> tuple[bool, str]:
-        """(terpenuhi, alasan) untuk baris tabel milik fase aktif."""
+    def _prerequisite(self, pending_close: bool | None = None) -> tuple[bool, str]:
+        """(terpenuhi, alasan) untuk baris tabel milik fase aktif.
+
+        ``pending_close`` adalah nilai penutupan fase aktif pada transisi yang
+        sedang diperiksa: fase yang sedang ditutup dalam transisi ini tidak boleh
+        memblokir keberangkatannya sendiri.
+        """
         phase = self._current
         if phase == START:
             return True, ""
         if phase == "F1":
-            if self._completed.get("F1") is True:
+            if self._completed.get("F1") is True or pending_close is True:
                 return True, ""
             return False, "F1 belum selesai dengan status ok; panggil mark_completed('F1')"
         if phase == "F2":
@@ -203,7 +229,7 @@ class PhaseController:
                 "meta.residual == 0 di evidence/F3.json"
             )
         if phase == "F4":
-            if "F4" in self._completed:
+            if "F4" in self._completed or pending_close is not None:
                 return True, ""
             return False, (
                 "F4 belum ditutup; tandai selesai atau tandai tidak berlaku lewat "

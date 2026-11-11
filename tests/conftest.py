@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pandas as pd
 import pytest
+from synthetic import tulis_pelanggan, tulis_penjualan
 
 from swarmfold.config import Settings
 from swarmfold.ingest import ingest
@@ -28,15 +28,21 @@ def settings(tmp_path: Path) -> Settings:
 @pytest.fixture
 def run(settings: Settings, tmp_path: Path) -> RunPaths:
     paths = RunPaths(settings.data_root, "2026-01-01-test").ensure()
-    source = tmp_path / "penjualan.csv"
-    pd.DataFrame(
-        {
-            "tanggal": ["2025-01-05", "2025-02-05", "2025-03-05", "2025-04-05"],
-            "produk": ["A", "A", "B", "B"],
-            "total": [120000, 150000, 90000, 110000],
-        }
-    ).to_csv(source, index=False)
-    ingest([source], paths)
+    ingest([tulis_penjualan(tmp_path / "penjualan.csv")], paths)
+    return paths
+
+
+@pytest.fixture
+def run_dua_berkas(settings: Settings, tmp_path: Path) -> RunPaths:
+    """Dua CSV tanpa kunci bersama: kelompok data yang terpisah."""
+    paths = RunPaths(settings.data_root, "2026-01-01-dua").ensure()
+    ingest(
+        [
+            tulis_penjualan(tmp_path / "penjualan.csv"),
+            tulis_pelanggan(tmp_path / "pelanggan.csv"),
+        ],
+        paths,
+    )
     return paths
 
 

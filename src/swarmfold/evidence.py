@@ -239,6 +239,17 @@ class EvidenceStore:
             )
         return total
 
+    @staticmethod
+    def composite_of(tree: dict[str, str]) -> str:
+        """sha256 dari peta `{nama berkas: sha256}`.
+
+        Dipakai loop dengan peta yang dibekukan saat run mulai, supaya angka
+        yang divalidasi di akhir tidak bergantung pada isi `data/` yang sudah
+        berubah di tengah run.
+        """
+        payload = json.dumps(dict(sorted(tree.items())), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
     def composite_hash(self) -> str:
         """Satu sha256 untuk seluruh `data/`: hash dari peta `{nama berkas: sha256}`.
 
@@ -248,9 +259,7 @@ class EvidenceStore:
         """
         from .tools import hash_tree
 
-        tree = hash_tree(self.paths.data_dir)
-        payload = json.dumps(tree, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        return self.composite_of(hash_tree(self.paths.data_dir))
 
     def has_residual_zero(self, phase: str) -> bool:
         """True bila ada finding di fase itu dengan `meta.residual == 0`."""

@@ -70,6 +70,21 @@ def test_cell_cannot_write_to_data(toolbox: ToolBox, run: RunPaths) -> None:
     result = toolbox.dispatch("run_cell", {"code": code, "intent": "coba merusak data"})
     assert result.get("status") == "error" or "error" in result
     assert hash_tree(run.data_dir) == before, "data/ berubah setelah cell"
+    assert toolbox.ctx.fatal is False
+
+
+def test_data_mutation_is_fatal_and_cell_is_recorded(toolbox: ToolBox, run: RunPaths) -> None:
+    data_file = next(run.data_dir.iterdir())
+    data_file.chmod(0o666)
+    result = toolbox.dispatch(
+        "run_cell",
+        {"code": f"open({str(data_file)!r}, 'a').write('x')", "intent": "tambah baris ke data"},
+    )
+
+    assert "error" in result and "data/" in result["error"]
+    assert toolbox.ctx.fatal is True
+    index = json.loads((run.cells_dir / "index.json").read_text(encoding="utf-8"))
+    assert [cell["n"] for cell in index["cells"]] == [1], "cell perusak harus tetap tercatat"
 
 
 def test_output_truncated_to_budget(toolbox: ToolBox) -> None:
@@ -96,9 +111,25 @@ def test_chart_saved_and_indexed(toolbox: ToolBox, run: RunPaths) -> None:
 
 
 def test_advance_phase_marks_previous_complete(toolbox: ToolBox) -> None:
+    toolbox.dispatch("run_cell", {"code": "print(4)", "intent": "hitung baris"})
     result = toolbox.dispatch("advance_phase", {"target": "F2", "reason": "profil data selesai"})
     assert result.get("ok") is True
     assert toolbox.ctx.controller.is_completed("F1") is True
+
+
+def test_advance_phase_requires_work_in_current_phase(toolbox: ToolBox) -> None:
+    blocked = toolbox.dispatch("advance_phase", {"target": "F2", "reason": "langsung pindah"})
+    assert "error" in blocked and "belum punya bukti kerja" in blocked["error"]
+    assert toolbox.ctx.controller.current == "F1"
+    assert toolbox.ctx.controller.is_completed("F1") is False
+
+
+def test_rejected_advance_does_not_mark_completed(toolbox: ToolBox) -> None:
+    toolbox.dispatch("run_cell", {"code": "print(4)", "intent": "hitung baris"})
+    rejected = toolbox.dispatch("advance_phase", {"target": "F5", "reason": "lompat"})
+    assert "error" in rejected
+    assert toolbox.ctx.controller.current == "F1"
+    assert toolbox.ctx.controller.is_completed("F1") is False
 
 
 def test_finish_sets_flags(toolbox: ToolBox) -> None:

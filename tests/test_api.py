@@ -86,6 +86,8 @@ def test_package_excludes_input(tmp_path: Path) -> None:
     run_id = response.json()["run_id"]
     run_dir = settings.data_root / run_id
     (run_dir / "done.json").write_text('{"status": "ok"}', encoding="utf-8")
+    (run_dir / "analysis.ipynb").write_text("{}", encoding="utf-8")
+    (run_dir / "laporan.md").write_text("# laporan\n", encoding="utf-8")
     package = client.get(f"/api/runs/{run_id}/paket")
     assert package.status_code == 200
 
@@ -93,6 +95,22 @@ def test_package_excludes_input(tmp_path: Path) -> None:
         names = archive.namelist()
     assert "input/a.csv" not in names
     assert "done.json" in names
+
+
+def test_package_requires_deliverables_unless_failed(tmp_path: Path) -> None:
+    client, _, settings = _client(tmp_path)
+    response = client.post("/api/runs", files={"files": ("a.csv", b"a,b\n1,2\n", "text/csv")})
+    run_id = response.json()["run_id"]
+    run_dir = settings.data_root / run_id
+
+    (run_dir / "done.json").write_text('{"status": "ok"}', encoding="utf-8")
+    blocked = client.get(f"/api/runs/{run_id}/paket")
+    assert blocked.status_code == 409
+    assert "deliverable wajib" in blocked.json()["detail"]
+
+    (run_dir / "done.json").write_text('{"status": "failed"}', encoding="utf-8")
+    allowed = client.get(f"/api/runs/{run_id}/paket")
+    assert allowed.status_code == 200
 
 
 def test_upload_over_size_cap_is_413(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -143,6 +161,8 @@ def test_package_skips_symlinks_and_tmp_files(
     run_id = response.json()["run_id"]
     run_dir = settings.data_root / run_id
     (run_dir / "done.json").write_text('{"status": "ok"}', encoding="utf-8")
+    (run_dir / "analysis.ipynb").write_text("{}", encoding="utf-8")
+    (run_dir / "laporan.md").write_text("# laporan\n", encoding="utf-8")
     (run_dir / "catatan.tmp").write_text("sisa", encoding="utf-8")
     outside = tmp_path / "rahasia.txt"
     outside.write_text("jangan ikut", encoding="utf-8")

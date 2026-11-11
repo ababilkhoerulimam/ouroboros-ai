@@ -20,6 +20,8 @@ from .runtime import RunPaths, StatusStore, atomic_write_json, utc_now
 from .tools import ToolBox, ToolContext, hash_tree
 
 MAX_NUDGES = 2
+#: Turn berurutan tanpa satu pun tool yang berhasil sebelum run dihentikan.
+MAX_STUCK_TURNS = 3
 
 
 class ChatClient(Protocol):
@@ -82,15 +84,20 @@ class AgentLoop:
         self.nudges = 0
         self.errors: list[str] = []
         self.phase_start_cell = 0
+        self.dataset_hash = ""
 
     # -- orkestrasi ---------------------------------------------------------
 
     def run(self) -> RunOutcome:
         self.paths.ensure()
         self._prepare_status()
-        dataset_hash = hash_tree(self.paths.data_dir)
-        if not dataset_hash:
+        tree = hash_tree(self.paths.data_dir)
+        if not tree:
             return self._fail("data/ kosong: ingest tidak menghasilkan berkas kerja")
+        # Composite dibekukan sekarang dan dipakai sampai akhir: kalau `data/`
+        # berubah di tengah run, angka tetap divalidasi terhadap data asli.
+        self.dataset_hash = EvidenceStore.composite_of(tree)
+        self.status.update(dataset_hash=self.dataset_hash)
 
         kernel = KernelSession(self.paths.dir, timeout_s=self.settings.cell_timeout_s)
         notebook = NotebookWriter(self.paths.notebook_file)
@@ -102,7 +109,7 @@ class AgentLoop:
                 controller=self.controller,
                 kernel=kernel,
                 notebook=notebook,
-                dataset_hash=dataset_hash,
+                dataset_hash=tree,
             )
         )
 
@@ -123,8 +130,12 @@ class AgentLoop:
         return self._finalize(toolbox)
 
     def _drive(self, messages: list[dict[str, Any]], toolbox: ToolBox) -> None:
-        hard_limit = self.settings.max_cells + 10
-        while self.cells_run <= hard_limit:
+        # Batas turn dihitung dari jumlah panggilan model, bukan dari cell:
+        # `run_cell` yang ditolak tidak menaikkan `cells_run`, jadi penjaga
+        # berbasis cell tidak pernah berhenti.
+        max_turns = self.settings.max_cells + 20
+        stuck = 0
+        for _turn in range(max_turns):
             self._maybe_checkpoint(messages)
             messages.append({"role": "user", "content": self._state_text()})
 
@@ -146,8 +157,11 @@ class AgentLoop:
                 )
                 continue
 
+            progress = False
+            results: list[dict[str, Any]] = []
             for call in turn.tool_calls:
                 result = toolbox.dispatch(call.name, dict(call.arguments or {}))
+                results.append(result)
                 messages.append(
                     {
                         "role": "tool",
@@ -157,6 +171,17 @@ class AgentLoop:
                     }
                 )
                 self._observe(call.name, call.arguments or {}, result, toolbox)
+                if not result.get("error"):
+                    progress = True
+
+            if toolbox.ctx.fatal:
+                self.cells_run = max(self.cells_run, toolbox.ctx.cells_run)
+                reason = next(
+                    (str(result.get("error")) for result in results if result.get("error")),
+                    "pelanggaran fatal di dalam cell",
+                )
+                self.errors.append(reason)
+                return
 
             if toolbox.ctx.finished:
                 if self.controller.current != "F7":
@@ -167,6 +192,23 @@ class AgentLoop:
             if self.controller.current == "F7" and self.paths.report_file.exists():
                 toolbox.ctx.finished = True
                 return
+
+            stuck = 0 if progress else stuck + 1
+            if stuck < MAX_STUCK_TURNS:
+                continue
+            if self.controller.current == "F7":
+                self.errors.append(
+                    f"model tidak membuat kemajuan di F7 setelah {MAX_STUCK_TURNS} turn; "
+                    "run dihentikan"
+                )
+                return
+            self.errors.append(
+                f"model tidak membuat kemajuan setelah {MAX_STUCK_TURNS} turn; F7 dipaksa"
+            )
+            self._force_f7(messages, toolbox)
+            stuck = 0
+
+        self.errors.append(f"batas {max_turns} turn tercapai; run dihentikan")
 
     # -- prompt -------------------------------------------------------------
 
@@ -369,16 +411,20 @@ class AgentLoop:
 
     def _finalize(self, toolbox: ToolBox) -> RunOutcome:
         index = self._cells_index()
-        hashes = self._dataset_hashes()
-        dataset_hash = hashes[0] if hashes else ""
+        dataset_hash = EvidenceStore.composite_of(toolbox.ctx.dataset_hash)
         problems = self.store.validate_all(cells_index=index, dataset_hash=dataset_hash)
         for problem in problems:
             self.errors.append(f"evidence: {problem}")
             self.status.warn(problem)
 
         status = toolbox.ctx.finish_status or "partial"
-        if problems or self.errors:
-            status = "partial" if status == "ok" else status
+        if problems or toolbox.ctx.fatal:
+            # CONTRACTS.md §4: pelanggaran validasi menolak publish. Paket tetap
+            # dibuat untuk status failed, tetapi sebagai laporan "analisis
+            # terhenti", bukan deliverable yang tampak sukses.
+            status = "failed"
+        elif self.errors and status == "ok":
+            status = "partial"
 
         done = {
             "status": status,
@@ -390,7 +436,7 @@ class AgentLoop:
                 "report_pdf": "",
                 "clean_data": "derived/01_clean.csv" if self.paths.clean_data_file.exists() else "",
             },
-            "verification": {"rerun": "skipped", "mismatches": []},
+            "verification": {"rerun": "skipped", "mismatches": problems},
             "summary": toolbox.ctx.finish_summary or "run berhenti tanpa ringkasan model",
             "finished_at": utc_now(),
         }
@@ -427,9 +473,6 @@ class AgentLoop:
         if not path.exists():
             return {"cells": []}
         return json.loads(path.read_text(encoding="utf-8"))
-
-    def _dataset_hashes(self) -> list[str]:
-        return list(hash_tree(self.paths.data_dir).values())
 
     def _assistant_message(self, turn: ModelTurn) -> dict[str, Any]:
         message: dict[str, Any] = {"role": "assistant", "content": turn.content or ""}

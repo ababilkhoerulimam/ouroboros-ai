@@ -2,11 +2,17 @@ services:
   app:
     build: .
     image: swarmfold:local
+    # Loopback saja: tanpa autentikasi, port yang terbuka ke LAN berarti siapa
+    # pun di jaringan bisa mengunduh dataset klien lewat /api/runs/{id}/paket.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     env_file:
       - .env
     volumes:
       - ./runs:/runs
       - ./inbox:/inbox:ro
+    # Satu cell yang boros tidak boleh memakan memori/PID host.
+    mem_limit: 4g
+    pids_limit: 256
+    cpus: 2.0
     restart: unless-stopped

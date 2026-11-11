@@ -46,6 +46,7 @@ Diperbarui setiap transisi state.
   "started_at": "2026-11-10T10:00:00Z",
   "updated_at": "2026-11-10T10:12:41Z",
   "inputs": [{"name": "penjualan.xlsx", "sha256": "…", "bytes": 48211}],
+  "dataset_hash": "sha256:…",
   "env": {"pandas": "2.2.2", "numpy": "1.26.4", "python": "3.11.9"},
   "model": {"requested": "ag/gemini-3.8-flash-high", "returned": "gemini-3.8-flash-n"},
   "usage": {"tokens_in": 0, "tokens_out": 0, "cost_estimate": 0.0},
@@ -58,6 +59,7 @@ Aturan:
 
 - `state` hanya boleh bergerak maju, kecuali ke `failed`.
 - `phase` dan `cell` adalah posisi saat ini, bukan hasil akhir.
+- `dataset_hash` adalah sha256 dari peta `{nama berkas di data/: sha256}`, dibekukan saat run mulai. `dataset_hash` pada finding harus sama persis dengan nilai ini, sehingga run multi-berkas tidak bisa memakai hash salah satu berkas saja.
 - `warnings` tidak pernah dikosongkan; peringatan bersifat akumulatif.
 
 ## 3. `cells/index.json`

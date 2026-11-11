@@ -98,6 +98,16 @@ def test_f1_must_be_completed_ok_before_f2(tmp_path):
     assert controller.current == "F2"
 
 
+def test_phase_closed_as_not_applicable_is_not_completed(tmp_path):
+    controller, _ = _controller(tmp_path)
+    assert controller.advance("F1").ok
+
+    controller.mark_completed("F4", ok=False)
+
+    assert controller.is_closed("F4") is True
+    assert controller.is_completed("F4") is False
+
+
 def test_f2_needs_a_verified_finding(tmp_path):
     controller, store = _controller(tmp_path)
     _to_f2(controller)

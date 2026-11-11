@@ -85,6 +85,7 @@ class ToolContext:
     finish_summary: str | None = None
     cells_run: int = 0
     charts: list[str] = field(default_factory=list)
+    fatal: bool = False
 
 
 class ToolBox:
@@ -228,7 +229,6 @@ class ToolBox:
         n = self.ctx.cells_run + 1
         phase = self.ctx.controller.current or "F1"
         output = self.ctx.kernel.execute(code, timeout_s=self.ctx.settings.cell_timeout_s)
-        self._verify_data("sesudah cell")
 
         stdout, truncated_out = _truncate(output.stdout)
         stderr, truncated_err = _truncate(output.stderr)
@@ -260,6 +260,10 @@ class ToolBox:
         self.ctx.cells_run = n
         if chart_paths:
             self.ctx.charts.extend(chart_paths)
+
+        # Verifikasi "sesudah" berjalan setelah cell tercatat: cell yang merusak
+        # data/ tetap masuk audit trail, lalu run dihentikan sebagai fatal.
+        self._verify_data("sesudah cell")
 
         return {
             "cell": n,
@@ -306,6 +310,9 @@ class ToolBox:
                 for name in current
                 if current.get(name) != self.ctx.dataset_hash.get(name)
             ]
+            # `data/` adalah salinan kanonik yang mendasari semua angka; kalau
+            # berubah, run tidak boleh lanjut dan tidak boleh berakhir "ok".
+            self.ctx.fatal = True
             raise ToolError(
                 f"data/ berubah {when}: {', '.join(changed)}; run dihentikan karena data mentah "
                 "harus read-only"
@@ -370,18 +377,52 @@ class ToolBox:
     # -- fase ---------------------------------------------------------------
 
     def advance_phase(self, target: str, reason: str = "") -> dict[str, Any]:
-        current = self.ctx.controller.current
-        if current and current not in ("", "F7"):
-            not_applicable = "tidak berlaku" in (reason or "").lower()
-            self.ctx.controller.mark_completed(current, ok=not not_applicable)
-        result = self.ctx.controller.advance(target, reason or "")
-        if result.ok:
-            return {"ok": True, "phase": result.target, "allowed": result.allowed}
-        return {
-            "error": result.reason,
-            "allowed": result.allowed,
-            "hint": "pilih dari allowed; jangan ulangi target yang sama",
-        }
+        controller = self.ctx.controller
+        current = controller.current
+        not_applicable = "tidak berlaku" in (reason or "").lower()
+
+        # Fase hanya boleh ditutup kalau ada bukti kerja nyata. Tanpa ini model
+        # bisa mengklaim F1 selesai tanpa satu cell pun, lalu F2 lolos prasyarat.
+        if current not in ("", "F7") and not not_applicable and not self._phase_has_work(current):
+            return {
+                "error": (
+                    f"{current} belum punya bukti kerja: butuh minimal satu cell berstatus ok "
+                    f"di fase itu atau entri di evidence/{current}.json"
+                ),
+                "allowed": controller.allowed_targets(),
+                "hint": "jalankan cell yang menjawab pertanyaan fase ini sebelum pindah",
+            }
+
+        # Penutupan fase dilakukan controller di dalam transisi yang sama:
+        # penolakan tidak boleh memutasi state, dan langkah mundur tidak menutup
+        # fase yang ditinggal.
+        close_current: bool | None = None
+        if current not in ("", "F7") and target in PHASES:
+            forward = PHASES.index(target) > PHASES.index(current)
+            if forward or not_applicable:
+                close_current = not not_applicable
+
+        result = controller.advance(target, reason or "", close_current=close_current)
+        if not result.ok:
+            return {
+                "error": result.reason,
+                "allowed": result.allowed,
+                "hint": "pilih dari allowed; jangan ulangi target yang sama",
+            }
+        return {"ok": True, "phase": result.target, "allowed": result.allowed}
+
+    def _phase_has_work(self, phase: str) -> bool:
+        """Ada cell ok di fase itu, atau entri bukti yang ditulis untuk fase itu."""
+        data = read_json(self.ctx.paths.cells_dir / "index.json", {"cells": []}) or {"cells": []}
+        for cell in data.get("cells", []):
+            if not isinstance(cell, dict):
+                continue
+            if cell.get("phase") == phase and cell.get("status") == "ok":
+                return True
+        evidence = self.ctx.store.load(phase)
+        if evidence.get("audit_complete") is True:
+            return True
+        return any(evidence.get(section) for section in ("findings", "hypotheses", "anomalies"))
 
     def finish(self, status: str, summary: str) -> dict[str, Any]:
         if status not in {"ok", "partial", "blocked", "failed"}:

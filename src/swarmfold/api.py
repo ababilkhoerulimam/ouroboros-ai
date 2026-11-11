@@ -39,6 +39,9 @@ _CHUNK_BYTES = 1024 * 1024
 _SWEEP_STATES = ("queued", "running", "verifying", "packaging")
 _INTERRUPTED_SUMMARY = "run terputus: proses berhenti sebelum selesai"
 
+#: Deliverable wajib sebelum paket boleh terbit (CONTRACTS.md §9).
+_REQUIRED_DELIVERABLES = (("notebook", "analysis.ipynb"), ("report_md", "laporan.md"))
+
 _log = logging.getLogger(__name__)
 
 
@@ -179,6 +182,18 @@ def _package(paths: RunPaths) -> Path:
     return target
 
 
+def _missing_deliverables(paths: RunPaths, done: dict[str, Any]) -> list[str]:
+    """Deliverable wajib yang belum ada di direktori run."""
+    declared = done.get("deliverables")
+    declared = declared if isinstance(declared, dict) else {}
+    missing: list[str] = []
+    for key, fallback in _REQUIRED_DELIVERABLES:
+        name = str(declared.get(key) or fallback)
+        if not (paths.dir / name).is_file():
+            missing.append(name)
+    return missing
+
+
 def create_app(
     settings: Settings | None = None,
     runner: JobRunner | None = None,
@@ -262,6 +277,13 @@ def create_app(
         done = read_json(paths.done_file)
         if done is None:
             raise HTTPException(status_code=409, detail="run belum selesai")
+        if str(done.get("status")) != "failed":
+            missing = _missing_deliverables(paths, done)
+            if missing:
+                raise HTTPException(
+                    status_code=409,
+                    detail="deliverable wajib belum ada: " + ", ".join(missing),
+                )
         package = _package(paths)
         return FileResponse(package, filename=package.name, media_type="application/zip")
 
