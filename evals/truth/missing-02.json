@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "case_id": "missing-02",
+  "split": "sealed",
+  "seed": 31,
+  "anchors": [
+    {
+      "id": "P1",
+      "kind": "missing",
+      "value": 0.06,
+      "unit": "ratio",
+      "tol_rel": 0.02,
+      "note": "pangsa tanggal kosong"
+    },
+    {
+      "id": "P2",
+      "kind": "missing",
+      "value": 1.0,
+      "unit": "ratio",
+      "tol_rel": 0.02,
+      "note": "bagian Reimburse yang kosong"
+    }
+  ],
+  "defects": []
+}

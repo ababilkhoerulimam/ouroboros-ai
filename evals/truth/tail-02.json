@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "case_id": "tail-02",
+  "split": "heldout",
+  "seed": 23,
+  "anchors": [
+    {
+      "id": "P1",
+      "kind": "tail",
+      "value": 0.375573,
+      "unit": "ratio",
+      "tol_rel": 0.01,
+      "note": "pangsa 1% teratas"
+    },
+    {
+      "id": "P2",
+      "kind": "tail",
+      "value": 18.971,
+      "unit": "count",
+      "tol_rel": 0.01,
+      "note": "mean"
+    },
+    {
+      "id": "P3",
+      "kind": "tail",
+      "value": 12,
+      "unit": "count",
+      "tol_rel": 0.01,
+      "note": "median"
+    }
+  ],
+  "defects": []
+}

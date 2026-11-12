@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "case_id": "trend-02",
+  "split": "heldout",
+  "seed": 21,
+  "anchors": [
+    {
+      "id": "P1",
+      "kind": "trend",
+      "value": -0.080075,
+      "unit": "ratio",
+      "tol_rel": 0.02,
+      "note": "YoY total"
+    },
+    {
+      "id": "P2",
+      "kind": "trend",
+      "value": 0.046628,
+      "unit": "ratio",
+      "tol_rel": 0.02,
+      "note": "YoY tanpa Januari"
+    },
+    {
+      "id": "N1",
+      "kind": "trend",
+      "value": 14374,
+      "unit": "count",
+      "tol_rel": 0.001,
+      "note": "total 2024"
+    }
+  ],
+  "defects": []
+}

@@ -1,0 +1,20 @@
+{
+  "tune": [
+    "trend-01",
+    "simpson-01",
+    "tail-01",
+    "join-01",
+    "missing-01",
+    "gap-01"
+  ],
+  "heldout": [
+    "trend-02",
+    "simpson-02",
+    "tail-02",
+    "join-02"
+  ],
+  "sealed": [
+    "missing-02",
+    "gap-02"
+  ]
+}
