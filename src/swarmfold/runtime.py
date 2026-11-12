@@ -122,6 +122,11 @@ class RunPaths:
         return self.dir / "laporan.template.md"
 
     @property
+    def report_docx_file(self) -> Path:
+        """Salinan Word dari laporan yang sudah dirender."""
+        return self.dir / "laporan.docx"
+
+    @property
     def clean_data_file(self) -> Path:
         return self.derived_dir / "01_clean.csv"
 

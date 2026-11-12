@@ -19,6 +19,7 @@ import shutil
 from dataclasses import dataclass
 from typing import Any
 
+from .docx_export import export_docx
 from .loop import AgentLoop, RunOutcome
 from .phases import PHASES
 from .runtime import (
@@ -116,9 +117,11 @@ def run_multi(
         outcome = AgentLoop(unit, settings, client, brief, dataset=dataset).run()
         units.append(UnitResult(dataset=dataset, paths=unit, outcome=outcome))
 
-    merge_reports(run, units)
+    docx_error = merge_reports(run, units)
     done = build_done(run, units, pack=settings.pack)
     atomic_write_json(run.done_file, done)
+    if docx_error:
+        StatusStore(run).warn(f"report docx: {docx_error}")
 
     cells = sum(unit.outcome.cells for unit in units)
     evidence = sum(unit.outcome.evidence for unit in units)
@@ -152,8 +155,8 @@ def run_multi(
     )
 
 
-def merge_reports(run: RunPaths, units: list[UnitResult]) -> None:
-    """Gabungkan laporan unit menjadi satu laporan run.
+def merge_reports(run: RunPaths, units: list[UnitResult]) -> str:
+    """Gabungkan laporan unit menjadi satu laporan run; kembalikan galat docx.
 
     Isi laporan unit disalin apa adanya; path relatif unit (`charts/...`,
     `cells/...`) digeser ke `datasets/<id>/...` supaya tetap menunjuk berkas
@@ -199,6 +202,17 @@ def merge_reports(run: RunPaths, units: list[UnitResult]) -> None:
         "dibandingkan dalam laporan ini."
     )
     atomic_write_text(run.report_file, "\n".join(lines).rstrip() + "\n")
+    # Laporan gabungan memakai path gambar relatif terhadap akar run, jadi
+    # base_dir-nya run, bukan direktori unit.
+    try:
+        export_docx(
+            run.report_file.read_text(encoding="utf-8"),
+            run.report_docx_file,
+            base_dir=run.dir,
+        )
+    except Exception as exc:  # noqa: BLE001 - markdown tetap kanonik
+        return f"{type(exc).__name__}: {exc}"
+    return ""
 
 
 def _rebase_paths(text: str, run: RunPaths, unit: RunPaths) -> str:
@@ -269,6 +283,7 @@ def build_done(
                 if (name := _deliverable(run, unit.paths.notebook_file))
             ],
             "report_md": _deliverable(run, run.report_file),
+            "report_docx": _deliverable(run, run.report_docx_file),
             "report_pdf": "",
             "clean_data": [
                 name

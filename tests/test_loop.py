@@ -307,7 +307,9 @@ def test_insufficient_data_writes_report_without_model(tmp_path, settings) -> No
     assert model.calls == 0, "data terlalu kecil tidak perlu memanggil model"
     assert outcome.status == "failed"
     assert paths.report_file.is_file()
+    assert paths.report_docx_file.is_file(), "laporan juga terbit sebagai .docx"
     done = read_json(paths.done_file)
+    assert done["deliverables"]["report_docx"] == "laporan.docx"
     assert done["status"] == "failed"
     assert done["mode"] == "insufficient"
     assert "belum siap" in done["summary"]

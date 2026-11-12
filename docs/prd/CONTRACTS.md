@@ -28,6 +28,7 @@ runs/<run_id>/
     data_dictionary.md
   analysis.ipynb             notebook tereksekusi
   laporan.md
+  laporan.docx               salinan Word dari laporan terbit
   laporan.pdf
   status.json
   done.json                  sentinel
@@ -259,6 +260,7 @@ Ditulis sebagai aksi terakhir.
   "deliverables": {
     "notebook": "analysis.ipynb",
     "report_md": "laporan.md",
+    "report_docx": "laporan.docx",
     "report_pdf": "laporan.pdf",
     "clean_data": "derived/01_clean.csv"
   },
