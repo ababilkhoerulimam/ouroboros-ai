@@ -374,7 +374,7 @@ class PromptLibrary:
         evidence_in_phase: int | None = None,
         checkpoint_in: int | None = None,
         stalls: int = 0,
-        next_ids: tuple[int, int] | None = None,
+        next_ids: tuple[int, int, int] | None = None,
     ) -> str:
         """Blok state tiap turn, dalam bentuk key=value yang dibaca `loop.md`."""
         lines = [
@@ -391,8 +391,10 @@ class PromptLibrary:
         if next_ids is not None:
             # Id dipakai bersama seluruh fase; tanpa ini model menebak dan
             # menabrak id fase lain.
-            evidence_id, hypothesis_id = next_ids
-            lines.append(f"next_ids=E-{evidence_id:03d},H-{hypothesis_id:03d}")
+            evidence_id, hypothesis_id, anomaly_id = next_ids
+            lines.append(
+                f"next_ids=E-{evidence_id:03d},H-{hypothesis_id:03d},AN-{anomaly_id:03d}"
+            )
         if phase_completed:
             lines.append(f"phases_done={','.join(phase_completed)}")
         return "\n".join(lines)

@@ -369,7 +369,7 @@ def test_state_block_renders_next_ids():
         evidence_count=24,
         allowed=["F5", "F7"],
         phase_completed=["F1", "F2", "F3", "F5"],
-        next_ids=(25, 5),
+        next_ids=(25, 5, 4),
     )
 
-    assert "next_ids=E-025,H-005" in block
+    assert "next_ids=E-025,H-005,AN-004" in block

@@ -334,9 +334,27 @@ def test_next_ids_counts_every_phase(tmp_path):
     store.add("F2", _finding(id="E-001", cell=1))
     store.add("F3", _finding(id="E-002", cell=1))
     store.add("F2", {"id": "H-001", "pillar": "hypothesis", "statement": "kenaikan musiman", "status": "unresolved", "value": 1, "unit": "count", "display": "1", "cell": 1, "artifact": "cells/001.out.txt", "dataset_hash": DATASET_HASH, "confidence": "low", "verified": False})
+    store.add("F1", {"id": "AN-001", "statement": "36 klaim melebihi biaya RS", "cell": 1, "handled": True, "note": "-"})
 
-    # E-002 sudah dipakai di F3, H-001 sudah dipakai di F2: nomor bebasnya 3 dan 2.
-    assert store.next_ids() == (3, 2)
+    # E-002 di F3, H-001 di F2, AN-001 di F1: nomor bebasnya 3, 2, dan 2.
+    assert store.next_ids() == (3, 2, 2)
+
+
+def test_duplicate_anomaly_across_phases_is_reported(tmp_path):
+    # Model menulis evidence lewat write_file, bukan add(), jadi duplikat AN baru
+    # terlihat di validate_all. Run 2026-11-12-366abb gagal karena F1 dan F3
+    # sama-sama memakai AN-002.
+    store = _store(tmp_path)
+    anomaly = {"id": "AN-002", "statement": "36 klaim melebihi biaya RS", "cell": 1, "handled": True, "note": "-"}
+    for phase in ("F1", "F3"):
+        store.write_phase(
+            phase,
+            {"question": "q", "findings": [], "hypotheses": [], "anomalies": [dict(anomaly)]},
+        )
+
+    errors = store.validate_all(cells_index=_cells("ok"), dataset_hash=DATASET_HASH)
+
+    assert any("AN-002" in error and "duplikat" in error for error in errors)
 
 
 def test_scientific_notation_artifact_matches_value(tmp_path):

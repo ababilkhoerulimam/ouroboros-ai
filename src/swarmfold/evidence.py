@@ -225,19 +225,20 @@ class EvidenceStore:
                         found.add(entry["id"])
         return found
 
-    def next_ids(self) -> tuple[int, int]:
-        """Nomor bebas berikutnya untuk `E-###` dan `H-###`.
+    def next_ids(self) -> tuple[int, int, int]:
+        """Nomor bebas berikutnya untuk `E-###`, `H-###`, dan `AN-###`.
 
         Id dipakai bersama seluruh fase, jadi model tidak bisa menebaknya dari
         jumlah temuan di fasenya sendiri. Run 2026-11-11-a3ab1f gagal karena F2
-        memakai H-001 dan F6 memakai H-001 lagi, lalu F2 menulis E-0010.
+        memakai H-001 dan F6 memakai H-001 lagi, lalu F2 menulis E-0010. Run
+        2026-11-12-366abb gagal karena F1 dan F3 sama-sama memakai AN-002.
         """
-        highest = {"E": 0, "H": 0}
+        highest = {"E": 0, "H": 0, "AN": 0}
         for ident in self.ids():
             kind, _, number = ident.partition("-")
             if kind in highest and number.isdigit():
                 highest[kind] = max(highest[kind], int(number))
-        return highest["E"] + 1, highest["H"] + 1
+        return highest["E"] + 1, highest["H"] + 1, highest["AN"] + 1
 
     def count(self, phase: str | None = None) -> int:
         """Jumlah `E-###` dengan `verified: true`, satu fase atau seluruh run."""
