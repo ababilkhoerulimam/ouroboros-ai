@@ -7,4 +7,4 @@ sasaran patch (`patcher.DENIED`).
 
 from __future__ import annotations
 
-__all__ = ["gate", "ledger", "patcher"]
+__all__ = ["cli", "gate", "ledger", "orchestrator", "patcher", "reviewer", "runner"]
