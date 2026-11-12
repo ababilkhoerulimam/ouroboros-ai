@@ -98,6 +98,11 @@ separate findings with separate ids.
 appear in the artifact. A percentage you derived from two printed counts is not a
 measurement; print it in a cell first, or leave it out of `display`.
 
+**`ratio` renders as a percentage.** `value: 0.008` displays as `0,8%`, never
+`0,0080` — that conversion is formatting, not derivation. The percentage itself must
+still be printed: `print(f"pct={share:.2%}")` puts `0.80%` in the artifact, and that
+is what `display` quotes. A cell that prints only the decimal does not cover `0,8%`.
+
 ## Statement rules
 
 - One sentence, falsifiable, with period and base.
