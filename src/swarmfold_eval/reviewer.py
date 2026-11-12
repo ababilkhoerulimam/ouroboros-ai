@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from . import patcher
 
@@ -24,6 +24,67 @@ SEVERITIES = ("critical", "high", "medium", "low")
 MIN_REASON = 10
 
 _FENCE = re.compile(r"^\s*```(?:json)?\s*(?P<isi>.*?)\s*```\s*$", re.DOTALL)
+
+#: Instruksi tetap untuk peran reviewer. Sengaja tinggal di paket eval, bukan di
+#: `prompts/`: berkas ini di luar jangkauan patch, jadi varian tidak bisa
+#: menulis ulang penilainya sendiri. Prompt worker berbahasa Inggris, jadi
+#: instruksi ini juga, supaya istilah di dalam patch cocok dengan yang dibaca.
+SYSTEM = """You are the reviewer in an evolution loop for a data-analysis agent.
+
+The worker reads CSV input, writes notebook cells, and reports findings with
+evidence. A ground-truth benchmark scores each run on recall of planted anchors,
+false discovery, contradictions, numeric error, calibration, and artifact
+defects. You are given the scores of the current system and the in-scope source
+files. Find the rule that explains the scored failure, then propose the
+smallest patch that fixes it.
+
+Hard rules:
+- Patch only these prefixes: {allowed}. Nothing else is writable.
+- At most {max_files} files and {max_lines} changed lines in total.
+- The patch must be a unified diff that `git apply` accepts from the repo root,
+  with correct context lines taken from the files shown to you.
+- Every hunk must be justified by a failure you name in `findings`, quoting the
+  case id and the metric or defect that failed.
+- Never weaken evidence rules, scoring, or tests. Never touch eval or verify
+  code. Never add a rule that only helps one case id.
+- Prefer changing one rule in one prompt file over rewriting a file.
+
+Answer with one JSON object and nothing else:
+{schema}
+"""
+
+
+class ChatClient(Protocol):
+    """Bagian `ModelClient` yang dipakai reviewer; cukup untuk diuji dengan fake."""
+
+    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> Any: ...
+
+
+def system_prompt() -> str:
+    """Instruksi reviewer, dengan batas patch diisi dari `patcher` itu sendiri."""
+    return SYSTEM.format(
+        allowed=", ".join(patcher.ALLOWED),
+        max_files=patcher.MAX_FILES,
+        max_lines=patcher.MAX_TOTAL_LINES,
+        schema=json.dumps(schema(), ensure_ascii=False),
+    )
+
+
+def build_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+    """Pesan untuk model reviewer: instruksi tetap + konteks sebagai JSON."""
+    return [
+        {"role": "system", "content": system_prompt()},
+        {
+            "role": "user",
+            "content": json.dumps(context, ensure_ascii=False, indent=2, sort_keys=True),
+        },
+    ]
+
+
+def from_model(client: ChatClient, context: dict[str, Any]) -> Review:
+    """Tanya model reviewer lalu baca jawabannya; `ReviewError` bila tidak sesuai."""
+    turn = client.chat(build_messages(context))
+    return parse(turn.content)
 
 
 class ReviewError(ValueError):

@@ -18,9 +18,11 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from swarmfold.config import ConfigError, Settings
+from swarmfold.llm import ModelClient
 from swarmfold_verify import pins
 
-from . import orchestrator
+from . import orchestrator, reviewer
 
 
 def _print(data: Any) -> None:
@@ -82,6 +84,43 @@ def _evaluate(args: argparse.Namespace) -> int:
     return 0 if hasil.verdict == "promoted" else 1
 
 
+def _reviewer_client() -> ModelClient:
+    """Klien untuk peran reviewer; modelnya boleh berbeda dari worker."""
+    settings = Settings.from_env()
+    base_url, api_key = settings.require_model()
+    return ModelClient(
+        base_url,
+        api_key,
+        settings.reviewer_model or settings.model,
+        temperature=settings.temperature,
+        top_p=settings.top_p,
+        seed=settings.seed,
+        max_tokens=settings.max_tokens,
+    )
+
+
+def _evolve(args: argparse.Namespace) -> int:
+    try:
+        client = _reviewer_client()
+    except ConfigError as error:
+        _print({"error": str(error)})
+        return 2
+    orch = _orchestrator(args, with_runner=True)
+    hasil = orch.evolve(
+        Path(args.worktree), partial(reviewer.from_model, client), rounds=args.rounds
+    )
+    _print(
+        {
+            "rounds": args.rounds,
+            "outcomes": [
+                {"verdict": item.verdict, "reason": item.reason, "seq": item.entry.get("seq")}
+                for item in hasil
+            ],
+        }
+    )
+    return 0 if hasil and hasil[-1].verdict == "promoted" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="swarmfold-eval", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -90,16 +129,19 @@ def build_parser() -> argparse.ArgumentParser:
         ("selftest", _selftest, "periksa pin, split, dan rantai ledger"),
         ("baseline", _baseline, "ukur sistem tanpa patch"),
         ("evaluate", _evaluate, "nilai satu varian"),
+        ("evolve", _evolve, "minta reviewer mengusulkan patch lalu nilainya"),
     ):
         sub_parser = sub.add_parser(nama, help=bantuan)
         sub_parser.add_argument("--root", type=Path, default=Path("evals"))
         sub_parser.add_argument("--repo", type=Path, default=Path("."))
         if nama != "selftest":
             sub_parser.add_argument("--replicas", type=int, default=3)
-        if nama == "baseline":
+        if nama in ("baseline", "evolve"):
             sub_parser.add_argument("--worktree", type=Path, default=Path("."))
         if nama == "evaluate":
             sub_parser.add_argument("--variant", type=Path, required=True)
+        if nama == "evolve":
+            sub_parser.add_argument("--rounds", type=int, default=1)
         sub_parser.set_defaults(func=fungsi)
     return parser
 

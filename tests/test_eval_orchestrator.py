@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from swarmfold_eval import cli, gate, ledger, orchestrator
+from swarmfold_eval import cli, gate, ledger, orchestrator, patcher, reviewer
 from swarmfold_verify import cases, pins
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "swarmfold_verify"
@@ -194,3 +194,124 @@ def test_cli_selftest(siap: tuple[Path, Path, dict], capsys: pytest.CaptureFixtu
 
     assert kode == 0
     assert json.loads(capsys.readouterr().out)["count"] == 0
+
+
+def test_baseline_survives_one_failed_run(siap: tuple[Path, Path, dict]) -> None:
+    root, repo, lock = siap
+    bench = FakeBench(root.parent, _skor(["repo"], 0.40))
+    asli = bench.run
+
+    def run(worktree: Path, case_id: str, input_dir: Path, replica: int) -> Path:
+        if case_id == "trend-01" and replica == 0:
+            raise orchestrator.OrchestratorError("run terputus")
+        return asli(worktree, case_id, input_dir, replica)
+
+    orch = orchestrator.Orchestrator(root, repo, run, bench.score, replicas=2)
+
+    data = orch.measure_baseline(repo)
+
+    tune = data["splits"]["tune"]
+    assert len(tune) == len(cases.splits()["tune"]) * 2
+    gagal = [item for item in tune if item.get("error")]
+    assert len(gagal) == 1
+    assert "recall" not in gagal[0]
+    assert gate.median(tune, "recall") == 0.40
+
+
+# -- M7: reviewer sebagai pengusul patch ------------------------------------
+
+
+def _review(patch: str = "", verdict: str = "revise") -> reviewer.Review:
+    return reviewer.Review(
+        verdict=verdict,
+        reason="kasus tune kehilangan jangkar karena rasio ditulis sebagai desimal",
+        findings=(
+            reviewer.Finding(
+                file="prompts/style.md", issue="rasio ditulis desimal", severity="high"
+            ),
+        ),
+        patch=patch,
+    )
+
+
+def test_evolve_promotes_reviewer_patch(siap: tuple[Path, Path, dict]) -> None:
+    root, repo, lock = siap
+    bench = FakeBench(root.parent, {**_skor(["repo"], 0.40), **_skor(["r01"], 0.70)})
+    orch = _orch(root, repo, bench)
+    orch.measure_baseline(repo)
+
+    hasil = orch.evolve(repo, lambda konteks: _review(_patch()), rounds=1)
+
+    assert [item.verdict for item in hasil] == ["promoted"]
+    assert (root / "worktrees" / "r01").is_dir()
+    assert ledger.last(root / ledger.LEDGER_FILE)["variant_id"] == "r01"
+    assert ledger.last(root / ledger.LEDGER_FILE)["layer"] == "prompt"
+
+
+def test_evolve_stops_when_reviewer_finds_nothing(siap: tuple[Path, Path, dict]) -> None:
+    root, repo, lock = siap
+    bench = FakeBench(root.parent, _skor(["repo"], 0.40))
+    orch = _orch(root, repo, bench)
+    orch.measure_baseline(repo)
+
+    hasil = orch.evolve(repo, lambda konteks: _review(verdict="approve"), rounds=1)
+
+    assert hasil == []
+    assert ledger.last(root / ledger.LEDGER_FILE)["verdict"] == "rejected"
+    assert not (root / "worktrees" / "r01").exists()
+
+
+def test_evolve_records_bad_reviewer_answer(siap: tuple[Path, Path, dict]) -> None:
+    root, repo, lock = siap
+    bench = FakeBench(root.parent, _skor(["repo"], 0.40))
+    orch = _orch(root, repo, bench)
+    orch.measure_baseline(repo)
+
+    def proposer(konteks: dict) -> reviewer.Review:
+        raise reviewer.ReviewError("jawaban reviewer bukan JSON")
+
+    hasil = orch.evolve(repo, proposer, rounds=1)
+
+    assert [item.verdict for item in hasil] == ["unexpected"]
+    assert "reviewer" in hasil[0].reason
+    assert ledger.last(root / ledger.LEDGER_FILE)["verdict"] == "unexpected"
+
+
+def test_second_round_builds_on_promoted_branch(siap: tuple[Path, Path, dict]) -> None:
+    root, repo, lock = siap
+    bench = FakeBench(
+        root.parent,
+        {**_skor(["repo"], 0.40), **_skor(["r01"], 0.70), **_skor(["r02"], 0.90)},
+    )
+    orch = _orch(root, repo, bench)
+    orch.measure_baseline(repo)
+    dilihat: list[str] = []
+
+    def proposer(konteks: dict) -> reviewer.Review:
+        dilihat.append(konteks["parent"])
+        return _review(_patch())
+
+    hasil = orch.evolve(repo, proposer, rounds=2)
+
+    assert [item.verdict for item in hasil] == ["promoted", "promoted"]
+    assert dilihat == ["eval/base", "eval/r01"]
+    assert "eval/r02" in _git(repo, "branch", "--list", "eval/r02")
+
+
+def test_context_carries_scores_scope_and_files(siap: tuple[Path, Path, dict]) -> None:
+    root, repo, lock = siap
+    orch = _orch(root, repo, FakeBench(root.parent, {}))
+
+    konteks = orch.context(
+        repo,
+        [{"case_id": "t01", "recall": 0.5, "sources": ["laporan.md"], "defects": [{"a": 1}]}],
+        "eval/base",
+    )
+
+    assert konteks["scope"]["allowed"] == list(patcher.ALLOWED)
+    assert konteks["scores"][0]["recall"] == 0.5
+    assert "sources" not in konteks["scores"][0]
+    assert "prompts/style.md" in konteks["files"]
+    assert all(
+        path.startswith(patcher.ALLOWED) for path in konteks["files"]
+    )

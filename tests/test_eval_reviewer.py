@@ -9,10 +9,11 @@ patch itu sempat diterapkan.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
-from swarmfold_eval import reviewer
+from swarmfold_eval import patcher, reviewer
 
 PATCH = (
     "diff --git a/prompts/style.md b/prompts/style.md\n"
@@ -115,3 +116,52 @@ def test_schema_mentions_every_verdict() -> None:
 
     assert set(skema["properties"]["verdict"]["enum"]) == set(reviewer.VERDICTS)
     assert "patch" in skema["properties"]
+
+
+def test_system_prompt_quotes_the_real_limits() -> None:
+    # Batas di prompt harus berasal dari `patcher`, bukan angka yang ditulis
+    # ulang: kalau keduanya berbeda, reviewer menulis patch yang pasti ditolak.
+    teks = reviewer.system_prompt()
+
+    assert ", ".join(patcher.ALLOWED) in teks
+    assert str(patcher.MAX_FILES) in teks
+    assert str(patcher.MAX_TOTAL_LINES) in teks
+    assert '"verdict"' in teks
+
+
+def test_reviewer_own_prompt_is_outside_patch_scope() -> None:
+    assert "src/swarmfold_eval/" in patcher.DENIED
+    with pytest.raises(reviewer.ReviewError, match="jangkauan"):
+        reviewer.parse(
+            _jawaban(
+                verdict="revise",
+                patch=PATCH.replace("prompts/style.md", "src/swarmfold_eval/reviewer.py"),
+                findings=[{"file": "x", "issue": "y", "severity": "high"}],
+            )
+        )
+
+
+def test_build_messages_sends_context_as_json() -> None:
+    pesan = reviewer.build_messages({"scores": [{"case_id": "t01", "recall": 0.5}]})
+
+    assert [item["role"] for item in pesan] == ["system", "user"]
+    assert json.loads(pesan[1]["content"])["scores"][0]["case_id"] == "t01"
+
+
+class _Klien:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.pesan: list[dict] = []
+
+    def chat(self, messages, tools=None) -> SimpleNamespace:
+        self.pesan = messages
+        return SimpleNamespace(content=self.content)
+
+
+def test_from_model_parses_answer_without_tools() -> None:
+    klien = _Klien(json.dumps(_jawaban()))
+
+    hasil = reviewer.from_model(klien, {"scores": []})
+
+    assert hasil.verdict == "approve"
+    assert klien.pesan[0]["role"] == "system"

@@ -20,7 +20,17 @@ python -m swarmfold_eval.cli baseline --root evals --repo . --worktree .
 
 # per varian
 python -m swarmfold_eval.cli evaluate --root evals --repo . --variant evals/variants/v001.json
+
+# usul patch oleh model reviewer, lalu nilai otomatis
+python -m swarmfold_eval.cli evolve --root evals --repo . --worktree . --rounds 1
 ```
+
+`evolve` menjalankan satu putaran penuh: ukur sistem berjalan di split `tune`,
+kirim skor + isi berkas dalam jangkauan ke model reviewer, lalu terapkan patch
+hasil `revise` sebagai varian dan nilai dengan `evaluate`. Ronde berikutnya
+dibangun dari branch yang dipromosikan (`parent = eval/rNN`), bukan dari
+`eval/base`, supaya patch bertumpuk di atas perbaikan yang sudah terbukti.
+Reviewer memakai `SWARMFOLD_REVIEWER_MODEL` bila diisi, kalau tidak model worker.
 
 Berkas varian:
 
@@ -51,11 +61,14 @@ Berkas varian:
 
 ## Yang masih manual
 
-- **Reviewer** (`swarmfold_eval/reviewer.py`) hanya menyediakan skema dan
-  pembaca jawaban; pemanggilan model reviewer belum dijahit ke orchestrator.
-  Jalankan reviewer di luar loop, lalu berikan patch hasil `revise` sebagai
-  varian baru.
 - **Promosi** hanya mempertahankan branch `eval/<vid>`. Memindahkan `eval/base`
   ke branch itu, dan menggabungkannya ke `main`, masih dilakukan manusia.
 - **Rotasi seed** tiap 10 promosi belum diotomatiskan: ubah `seed` di
   `swarmfold_verify/cases.py`, jalankan `build`, lalu ukur ulang baseline.
+
+## Reviewer tidak bisa menulis ulang dirinya
+
+Instruksi reviewer hidup di `src/swarmfold_eval/reviewer.py`, dan
+`src/swarmfold_eval/` ada di `patcher.DENIED`. Varian yang dipromosikan karena
+itu tidak bisa melonggarkan penilainya sendiri; satu-satunya cara mengubah
+reviewer adalah commit manusia.

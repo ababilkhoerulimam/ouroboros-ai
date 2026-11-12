@@ -25,7 +25,7 @@ from typing import Any
 from swarmfold_verify import cases, pins
 from swarmfold_verify import split as splits
 
-from . import gate, ledger, patcher
+from . import gate, ledger, patcher, reviewer
 
 BASELINE_FILE = "baseline.json"
 BASELINE_SCHEMA = 1
@@ -34,6 +34,19 @@ BASELINE_SCHEMA = 1
 Runner = Callable[[Path, str, Path, int], Path]
 #: (direktori run, case_id) -> skor dari verifier terpin.
 Scorer = Callable[[Path, str], dict[str, Any]]
+#: (konteks) -> jawaban reviewer. Disuntik supaya tes tidak memanggil model.
+Proposer = Callable[[dict[str, Any]], reviewer.Review]
+
+#: Batas konteks yang dikirim ke reviewer: cukup untuk menulis hunk dengan
+#: konteks yang benar, tidak cukup untuk mengirim seluruh repo.
+MAX_FILE_CHARS = 6000
+MAX_TOTAL_CHARS = 80000
+MAX_DEFECTS = 8
+
+#: Batas satu run pipeline. Satu cell butuh 1-2 menit pada kasus benchmark, dan
+#: run 40 cell bisa lewat satu jam; batas ini hanya menangkap run yang benar-benar
+#: menggantung, bukan run yang panjang.
+RUN_TIMEOUT_S = 7200
 
 
 class OrchestratorError(RuntimeError):
@@ -59,6 +72,30 @@ class Outcome:
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _ringkas(skor: dict[str, Any]) -> dict[str, Any]:
+    """Potong satu skor ke bagian yang berguna untuk mendiagnosis kegagalan.
+
+    `defects` bisa berisi puluhan baris; reviewer hanya butuh yang pertama untuk
+    melihat polanya, dan `sources` tidak membantu memilih patch.
+    """
+    return {
+        "case_id": skor.get("case_id"),
+        "split": skor.get("split"),
+        "n_findings": skor.get("n_findings"),
+        "n_anchors": skor.get("n_anchors"),
+        "recall": skor.get("recall"),
+        "false_discovery": skor.get("false_discovery"),
+        "contradictions": skor.get("contradictions"),
+        "numeric_error": skor.get("numeric_error"),
+        "calibration": skor.get("calibration"),
+        "defect_rate": skor.get("defect_rate"),
+        "duplicate_rate": skor.get("duplicate_rate"),
+        "missed": list(skor.get("missed") or [])[:10],
+        "defects": list(skor.get("defects") or [])[:MAX_DEFECTS],
+        "run_defects": list(skor.get("run_defects") or []),
+    }
 
 
 def pinned_scorer(pin_root: Path, evals_root: Path) -> Scorer:
@@ -125,7 +162,7 @@ def run_pipeline(
         capture_output=True,
         text=True,
         env=env,
-        timeout=3600,
+        timeout=RUN_TIMEOUT_S,
         check=False,
     )
     if hasil.returncode != 0:
@@ -184,16 +221,32 @@ class Orchestrator:
 
     # -- baseline -----------------------------------------------------------
 
-    def _measure(self, worktree: Path, split_name: str) -> list[dict[str, Any]]:
+    def _measure(
+        self, worktree: Path, split_name: str, *, tolerate: bool = False
+    ) -> list[dict[str, Any]]:
+        """Skor semua kasus satu split.
+
+        `tolerate=True` dipakai baseline: satu run yang gagal tidak boleh
+        membuang 29 run lain yang sudah selesai. Run gagal tetap tercatat
+        sebagai entri berisi `error`; `gate.median` membacanya sebagai nilai
+        terburuk, jadi baseline tidak terlihat lebih baik karenanya.
+        """
         if self.runner is None or self.scorer is None:
             raise OrchestratorError("runner dan scorer belum dipasang")
         hasil = []
         kasus = splits.expand(splits.cases_for(self.root, split_name), self.replicas)
         for case_id, replica in kasus:
-            run_dir = self.runner(
-                worktree, case_id, cases.case_input_dir(case_id, self.root), replica
-            )
-            hasil.append(self.scorer(run_dir, case_id))
+            try:
+                run_dir = self.runner(
+                    worktree, case_id, cases.case_input_dir(case_id, self.root), replica
+                )
+                hasil.append(self.scorer(run_dir, case_id))
+            except Exception as error:
+                if not tolerate:
+                    raise
+                hasil.append(
+                    {"case_id": case_id, "replica": replica, "error": str(error)[-500:]}
+                )
         return hasil
 
     def measure_baseline(self, worktree: Path) -> dict[str, Any]:
@@ -203,7 +256,9 @@ class Orchestrator:
             "created_at": _now(),
             "pin": self.lock()["digest"],
             "replicas": self.replicas,
-            "splits": {nama: self._measure(worktree, nama) for nama in splits.SELECTABLE},
+            "splits": {
+                nama: self._measure(worktree, nama, tolerate=True) for nama in splits.SELECTABLE
+            },
         }
         self.baseline_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         return data
@@ -266,6 +321,132 @@ class Orchestrator:
         )
         if keputusan.verdict != "promoted":
             gate.remove_worktree(self.repo, worktree, branch)
+        return hasil
+
+    # -- usul patch ---------------------------------------------------------
+
+    def _in_scope_files(self, worktree: Path) -> dict[str, str]:
+        """Isi berkas yang boleh dipatch, dipotong agar konteks tetap wajar."""
+        hasil: dict[str, str] = {}
+        total = 0
+        for prefix in patcher.ALLOWED:
+            for path in sorted((Path(worktree) / prefix).rglob("*")):
+                if not path.is_file() or path.suffix not in (".md", ".py"):
+                    continue
+                rel = path.relative_to(worktree).as_posix()
+                teks = path.read_text(encoding="utf-8", errors="replace")
+                if len(teks) > MAX_FILE_CHARS:
+                    teks = teks[:MAX_FILE_CHARS] + "\n... (dipotong)\n"
+                if total + len(teks) > MAX_TOTAL_CHARS:
+                    return hasil
+                hasil[rel] = teks
+                total += len(teks)
+        return hasil
+
+    def context(
+        self, worktree: Path, skor: list[dict[str, Any]], parent: str
+    ) -> dict[str, Any]:
+        """Bahan yang dilihat reviewer: skor, batas patch, dan isi berkasnya."""
+        return {
+            "parent": parent,
+            "policy": {
+                "metric": self.policy.metric,
+                "min_delta": self.policy.min_delta,
+                "max_regression": self.policy.max_regression,
+                "guardrails": self.policy.guardrails,
+            },
+            "scope": {
+                "allowed": list(patcher.ALLOWED),
+                "denied": list(patcher.DENIED),
+                "max_files": patcher.MAX_FILES,
+                "max_total_lines": patcher.MAX_TOTAL_LINES,
+            },
+            "scores": [_ringkas(item) for item in skor],
+            "files": self._in_scope_files(worktree),
+        }
+
+    def propose(
+        self,
+        worktree: Path,
+        proposer: Proposer,
+        *,
+        round_id: str,
+        parent: str = "eval/base",
+    ) -> Variant | None:
+        """Ukur sistem berjalan, minta reviewer mengusulkan patch.
+
+        `None` berarti reviewer memutuskan tidak ada yang perlu dipatch; keputusan
+        itu tetap dicatat di ledger sebagai `rejected` supaya tidak hilang.
+        """
+        skor = self._measure(worktree, "tune")
+        review = proposer(self.context(worktree, skor, parent))
+        if review.verdict != "revise":
+            self._record(
+                Variant(
+                    variant_id=round_id,
+                    hypothesis=review.reason,
+                    layer="reviewer",
+                    expected=f"reviewer memutuskan {review.verdict}",
+                    diff="",
+                    parent=parent,
+                ),
+                "rejected",
+                f"reviewer {review.verdict}: {review.reason}",
+                {},
+            )
+            return None
+
+        berkas = sorted(patcher._paths(review.patch))
+        layer = "prompt" if berkas and all(p.startswith("prompts/") for p in berkas) else "code"
+        return Variant(
+            variant_id=round_id,
+            hypothesis=review.reason,
+            layer=layer,
+            expected="reviewer: " + "; ".join(f"{f.file}: {f.issue}" for f in review.findings),
+            diff=review.patch,
+            parent=parent,
+        )
+
+    def evolve(
+        self, worktree: Path, proposer: Proposer, *, rounds: int = 1
+    ) -> list[Outcome]:
+        """Loop usul → nilai → promosi, berhenti pada kegagalan pertama.
+
+        Ronde berikutnya dibangun dari branch yang dipromosikan, bukan dari
+        `eval/base`, supaya patch bertumpuk di atas perbaikan yang sudah terbukti.
+        """
+        hasil: list[Outcome] = []
+        aktif = Path(worktree)
+        parent = "eval/base"
+        for nomor in range(1, max(1, rounds) + 1):
+            round_id = f"r{nomor:02d}"
+            try:
+                variant = self.propose(aktif, proposer, round_id=round_id, parent=parent)
+            except reviewer.ReviewError as error:
+                hasil.append(
+                    self._record(
+                        Variant(
+                            variant_id=round_id,
+                            hypothesis="reviewer tidak menjawab sesuai skema",
+                            layer="reviewer",
+                            expected="jawaban reviewer lolos skema",
+                            diff="",
+                            parent=parent,
+                        ),
+                        "unexpected",
+                        f"jawaban reviewer ditolak: {error}",
+                        {},
+                    )
+                )
+                break
+            if variant is None:
+                break
+            outcome = self.evaluate(variant)
+            hasil.append(outcome)
+            if outcome.verdict != "promoted":
+                break
+            parent = f"eval/{round_id}"
+            aktif = self.root / "worktrees" / round_id
         return hasil
 
     def _record(
