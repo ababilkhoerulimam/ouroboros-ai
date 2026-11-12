@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="agent-swarmfold" width="200">
+</p>
+
 # agent-swarmfold
 
 Aplikasi lokal yang mengubah file data penjualan menjadi tiga hal sekaligus:
