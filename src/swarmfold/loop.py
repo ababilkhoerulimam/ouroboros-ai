@@ -18,6 +18,7 @@ from .kernel import KernelSession, NotebookWriter
 from .llm import ModelClient, ModelError, ModelTurn
 from .pdf_export import export_pdf
 from .phases import PHASES, PhaseController, PromptLibrary
+from .provenance import write_provenance
 from .report import ReportError, render_slots
 from .runtime import (
     RunPaths,
@@ -115,6 +116,8 @@ class AgentLoop:
         self.dataset_hash = ""
         self.mode = "full"
         self.triage: dict[str, Any] = {}
+        #: Model yang menjawab menurut gateway, dicatat sekali saat pertama terlihat.
+        self._model_returned = ""
 
     # -- orkestrasi ---------------------------------------------------------
 
@@ -138,7 +141,10 @@ class AgentLoop:
         # Composite dibekukan sekarang dan dipakai sampai akhir: kalau `data/`
         # berubah di tengah run, angka tetap divalidasi terhadap data asli.
         self.dataset_hash = EvidenceStore.composite_of(tree)
-        self.status.update(dataset_hash=self.dataset_hash)
+        self.status.update(
+            dataset_hash=self.dataset_hash,
+            prompt_fingerprint=self.prompts.fingerprint(),
+        )
 
         kernel = KernelSession(self.paths.dir, timeout_s=self.settings.cell_timeout_s)
         notebook = NotebookWriter(self.paths.notebook_file)
@@ -498,6 +504,13 @@ class AgentLoop:
         self.status.bump_usage(
             int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0))
         )
+        if turn.model_returned and not self._model_returned:
+            # Ditulis sekali saja: bump_usage terjadi tiap turn dan status.json
+            # tidak perlu ditulis ulang hanya untuk field yang tidak berubah.
+            self._model_returned = turn.model_returned
+            self.status.update(
+                model={"requested": self.settings.model, "returned": self._model_returned}
+            )
 
     def _save_reasoning(self, turn: ModelTurn) -> None:
         if not turn.reasoning_content:
@@ -533,7 +546,16 @@ class AgentLoop:
 
     def _prepare_status(self) -> None:
         if self.paths.status_file.exists():
-            self.status.update(state="running", phase="F1")
+            # Jalur API sudah membuat status.json sebelum loop jalan, tanpa env
+            # dan inputs. Tanpa backfill, provenance setiap run kosong.
+            current = read_json(self.paths.status_file, {})
+            current = current if isinstance(current, dict) else {}
+            patch: dict[str, Any] = {"state": "running", "phase": "F1"}
+            if not current.get("inputs"):
+                patch["inputs"] = self._inputs()
+            if not current.get("env"):
+                patch["env"] = self._env()
+            self.status.update(**patch)
         else:
             self.status.create(
                 inputs=self._inputs(),
@@ -628,11 +650,12 @@ class AgentLoop:
         )
 
     def _inputs(self) -> list[dict[str, Any]]:
-        import json
-
         if not self.paths.profile_file.exists():
             return []
-        data = json.loads(self.paths.profile_file.read_text(encoding="utf-8"))
+        # read_json toleran: profile.json rusak tidak boleh menghentikan run
+        # sebelum triage, dan `_prepare_status` kini memanggil ini di jalur API.
+        data = read_json(self.paths.profile_file, {})
+        data = data if isinstance(data, dict) else {}
         return [
             {"name": item.get("name"), "sha256": item.get("sha256"), "bytes": item.get("bytes")}
             for item in data.get("files", [])
@@ -714,6 +737,19 @@ class AgentLoop:
             "summary": toolbox.ctx.finish_summary or "run berhenti tanpa ringkasan model",
             "finished_at": utc_now(),
         }
+        try:
+            write_provenance(
+                self.paths,
+                self.settings,
+                prompt_fingerprint=self.prompts.fingerprint(),
+                pack=self.pack,
+                prompt_files=self.prompts.file_hashes(),
+            )
+        except Exception as exc:  # noqa: BLE001 - provenance tidak boleh menggagalkan run
+            try:
+                self.status.warn(f"provenance gagal: {type(exc).__name__}: {exc}")
+            except Exception:  # noqa: BLE001 - status pun bisa gagal (disk penuh)
+                pass
         atomic_write_json(self.paths.done_file, done)
         self.status.update(
             state="done" if status in {"ok", "partial"} else "failed",
@@ -825,4 +861,11 @@ def _json_text(value: Any) -> str:
 
 def build_client(settings: Settings) -> ModelClient:
     base_url, api_key = settings.require_model()
-    return ModelClient(base_url, api_key, settings.model)
+    return ModelClient(
+        base_url,
+        api_key,
+        settings.model,
+        temperature=settings.temperature,
+        top_p=settings.top_p,
+        seed=settings.seed,
+    )

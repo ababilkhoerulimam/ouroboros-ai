@@ -356,3 +356,34 @@ def test_balasan_dengan_penalaran_saja_tidak_dianggap_kosong() -> None:
 
     assert count["n"] == 1
     assert turn.reasoning_content == "mempertimbangkan"
+
+
+def test_sampling_dikirim_hanya_bila_diisi() -> None:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return _json_response(_ok_body())
+
+    _client(handler).chat([{"role": "user", "content": "halo"}])
+
+    assert "temperature" not in seen
+    assert "top_p" not in seen
+    assert "seed" not in seen
+
+    _client(handler, temperature=0.2, top_p=0.9, seed=7).chat(
+        [{"role": "user", "content": "halo"}]
+    )
+
+    assert (seen["temperature"], seen["top_p"], seen["seed"]) == (0.2, 0.9, 7)
+
+
+def test_nama_model_dari_respons_dicatat() -> None:
+    # `model_requested` tetap id yang kita minta; `model_returned` mencatat
+    # model yang benar-benar menjawab, karena gateway boleh menggantinya.
+    turn = _client(lambda request: _json_response(_ok_body())).chat(
+        [{"role": "user", "content": "halo"}]
+    )
+
+    assert turn.model_requested == MODEL
+    assert turn.model_returned == "gemini-3.8-flash-n"

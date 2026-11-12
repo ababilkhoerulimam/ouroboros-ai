@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .docx_export import export_docx
+from .evidence import EvidenceStore
 from .loop import AgentLoop, RunOutcome
 from .pdf_export import export_pdf
 from .phases import PHASES
@@ -127,6 +128,30 @@ def run_multi(
     cells = sum(unit.outcome.cells for unit in units)
     evidence = sum(unit.outcome.evidence for unit in units)
     charts = sum(unit.outcome.charts for unit in units)
+    # Jalur ini tidak melewati `_finalize`, jadi identitas kebijakan dan model
+    # harus diambil dari unit: tanpa itu provenance run akar kosong.
+    unit_status = [read_json(unit.paths.status_file, {}) or {} for unit in units]
+    hashes = {
+        str(unit.dataset.get("id") or index): str(state.get("dataset_hash") or "")
+        for index, (unit, state) in enumerate(zip(units, unit_status, strict=True))
+        if state.get("dataset_hash")
+    }
+    returned = next(
+        (
+            str((state.get("model") or {}).get("returned") or "")
+            for state in unit_status
+            if (state.get("model") or {}).get("returned")
+        ),
+        "",
+    )
+    fingerprint = next(
+        (
+            str(state.get("prompt_fingerprint") or "")
+            for state in unit_status
+            if state.get("prompt_fingerprint")
+        ),
+        "",
+    )
     StatusStore(run).update(
         state="done" if done["status"] in {"ok", "partial"} else "failed",
         phase="F7",
@@ -134,6 +159,9 @@ def run_multi(
         pack=done["pack"],
         cell=cells,
         counts={"cells": cells, "evidence": evidence, "charts": charts},
+        dataset_hash=EvidenceStore.composite_of(hashes) if hashes else "",
+        prompt_fingerprint=fingerprint,
+        model={"requested": settings.model, "returned": returned},
         datasets=[
             {
                 "id": unit.dataset.get("id"),

@@ -54,6 +54,9 @@ class ModelTurn:
     latency_ms: int
     model_requested: str
     finish_reason: str | None
+    #: Model yang benar-benar menjawab menurut respons gateway. Bisa berbeda
+    #: dari `model_requested`; provenance mencatat keduanya.
+    model_returned: str = ""
 
 
 class ModelError(RuntimeError):
@@ -94,6 +97,9 @@ class ModelClient:
         retry_delays: tuple[float, ...] = (5.0, 15.0),
         empty_delays: tuple[float, ...] = (10.0, 30.0, 60.0),
         transport: httpx.BaseTransport | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        seed: int | None = None,
     ):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -103,6 +109,11 @@ class ModelClient:
         self._retry_delays = tuple(retry_delays)
         self._empty_delays = tuple(empty_delays)
         self._transport = transport
+        self._sampling = {
+            key: value
+            for key, value in (("temperature", temperature), ("top_p", top_p), ("seed", seed))
+            if value is not None
+        }
 
     def __repr__(self) -> str:
         return f"ModelClient(model={self._model!r}, host={_host_only(self._base_url)!r})"
@@ -114,6 +125,7 @@ class ModelClient:
             # Wajib: tanpa ini gateway membalas SSE, bukan JSON.
             "stream": False,
         }
+        payload.update(self._sampling)
         if tools:
             payload["tools"] = tools
             # Loop ini digerakkan tool: turn tanpa tool call tidak menambah apa pun,
@@ -250,9 +262,10 @@ class ModelClient:
             tool_calls=tool_calls,
             usage=usage,
             latency_ms=latency_ms,
-            # Nama dari respons diabaikan: gateway menggantinya.
             model_requested=self._model,
             finish_reason=None if raw_finish is None else str(raw_finish),
+            # Dicatat, bukan dipakai: gateway boleh mengganti model yang menjawab.
+            model_returned=str(data.get("model") or ""),
         )
 
     @staticmethod

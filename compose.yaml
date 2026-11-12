@@ -1,6 +1,10 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # `SWARMFOLD_BUILD_SHA=$(git rev-parse --short HEAD) docker compose build`
+        BUILD_SHA: "${SWARMFOLD_BUILD_SHA:-dev}"
     image: swarmfold:local
     # Loopback saja: tanpa autentikasi, port yang terbuka ke LAN berarti siapa
     # pun di jaringan bisa mengunduh dataset klien lewat /api/runs/{id}/paket.
@@ -13,6 +17,8 @@ services:
       # /app/runs di dalam container, jadi artefak run tidak pernah sampai ke
       # host dan hilang begitu container di-recreate.
       SWARMFOLD_DATA_ROOT: /runs
+      # Nama image dicatat `provenance.json`; build_sha masuk lewat build arg.
+      SWARMFOLD_IMAGE: swarmfold:local
     volumes:
       - ./runs:/runs
       - ./inbox:/inbox:ro

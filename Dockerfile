@@ -1,9 +1,15 @@
 FROM python:3.11-slim
 
+# Image tidak membawa `.git`, jadi commit harus masuk saat build. Nilainya
+# dicatat provenance.json; tanpa itu run di container tidak bisa diatribusikan
+# ke versi kode mana pun.
+ARG BUILD_SHA=dev
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     HOME=/app \
+    SWARMFOLD_BUILD_SHA=${BUILD_SHA} \
     MPLCONFIGDIR=/tmp/matplotlib \
     IPYTHONDIR=/tmp/ipython \
     JUPYTER_RUNTIME_DIR=/tmp/jupyter-runtime

@@ -20,6 +20,7 @@ from . import __version__
 from .config import Settings
 from .ingest import ingest
 from .loop import AgentLoop, Brief, build_client
+from .provenance import PROVENANCE_FILE, write_provenance
 from .runtime import (
     RunPaths,
     StatusStore,
@@ -80,10 +81,12 @@ class JobRunner:
 
     def _run_one(self, paths: RunPaths, brief: Brief) -> None:
         status = StatusStore(paths)
+        loop: AgentLoop | None = None
         try:
             ingest(_uploaded(paths), paths)
             client = self.client_factory(self.settings)
-            AgentLoop(paths, self.settings, client, brief).run()
+            loop = AgentLoop(paths, self.settings, client, brief)
+            loop.run()
         except Exception as exc:  # noqa: BLE001 - kegagalan harus tercatat, bukan hilang
             message = f"{type(exc).__name__}: {exc}"
             try:
@@ -93,6 +96,28 @@ class JobRunner:
                 pass
             read_json(paths.done_file, {})
             _write_failure(paths, message)
+        finally:
+            # Provenance harus ada juga pada jalur gagal dan multi-dataset,
+            # karena di situlah run tidak melewati `_finalize`.
+            _write_provenance(paths, self.settings, loop)
+
+
+def _write_provenance(paths: RunPaths, settings: Settings, loop: AgentLoop | None) -> None:
+    prompts = getattr(loop, "prompts", None)
+    try:
+        write_provenance(
+            paths,
+            settings,
+            prompt_fingerprint=prompts.fingerprint() if prompts is not None else "",
+            pack=getattr(loop, "pack", "") or "",
+            prompt_files=prompts.file_hashes() if prompts is not None else None,
+        )
+    except Exception as exc:  # noqa: BLE001 - provenance tidak boleh menggagalkan run
+        _log.warning("provenance gagal untuk run %s: %s", paths.run_id, exc)
+        try:
+            StatusStore(paths).warn(f"provenance gagal: {type(exc).__name__}: {exc}")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _uploaded(paths: RunPaths) -> list[Path]:
@@ -175,6 +200,10 @@ def _package(paths: RunPaths) -> Path:
             if item.is_symlink() or not item.is_file():
                 continue
             if item.name.endswith(".tmp"):
+                continue
+            if item.name == PROVENANCE_FILE:
+                # Metadata infrastruktur (image, commit, sampling), bukan
+                # deliverable klien. Tetap tersimpan di direktori run.
                 continue
             relative = item.relative_to(paths.dir)
             if relative.parts[0] == "input" or item.resolve() == target_resolved:

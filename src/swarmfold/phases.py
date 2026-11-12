@@ -11,6 +11,7 @@ tidak kehilangan fase aktif, daftar fase selesai, dan hitungan kembali.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +30,19 @@ MAX_RETURNS = 2
 _NO_REASON = "tidak ditandai selesai oleh model"
 _STATE_FILE = "phase.json"
 _MODULES = ("style", "evidence", "loop", "tools", "report", "deepdive")
+
+#: Berkas yang membentuk kebijakan satu run. Dipakai `PromptLibrary.fingerprint`
+#: agar dua run bisa dibedakan menurut isi prompt, bukan menurut tanggal.
+_POLICY_FILES = (
+    "system.md",
+    "loop.md",
+    "style.md",
+    "evidence.md",
+    "tools.md",
+    "report.md",
+    "deepdive.md",
+    *(f"phases/{phase}.md" for phase in PHASES),
+)
 
 _LEGAL: dict[str, tuple[str, ...]] = {
     START: ("F1",),
@@ -348,6 +362,7 @@ class PromptLibrary:
             )
         self.audience = str(audience or meta.get("audience") or DEFAULT_AUDIENCE)
         self.domain = str(domain or meta.get("domain") or DEFAULT_DOMAIN)
+        self._fingerprint = ""
 
     def system(self) -> str:
         return self._load("system.md")
@@ -405,6 +420,37 @@ class PromptLibrary:
             if candidate.is_file():
                 return self._render(candidate.read_text(encoding="utf-8"))
         raise FileNotFoundError(f"prompt tidak ditemukan: {self.dir / relative}")
+
+    def _policy_path(self, relative: str) -> Path | None:
+        """Berkas yang benar-benar dipakai untuk ``relative`` (pack menang)."""
+        for candidate in (self.pack_dir / relative, self.dir / relative):
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def file_hashes(self) -> dict[str, str]:
+        """sha256 tiap berkas kebijakan yang terpakai, untuk provenance."""
+        hashes: dict[str, str] = {}
+        for relative in _POLICY_FILES:
+            path = self._policy_path(relative)
+            if path is not None:
+                hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        return hashes
+
+    def fingerprint(self) -> str:
+        """Sidik jari isi kebijakan: pack + persona + bytes setiap berkas.
+
+        Dihitung dari berkas mentah, bukan hasil render, supaya stabil antar
+        instance dan tidak berubah hanya karena `audience` dirender berbeda.
+        """
+        if self._fingerprint:
+            return self._fingerprint
+        digest = hashlib.sha256()
+        digest.update(f"pack={self.pack}\0audience={self.audience}\0domain={self.domain}\0".encode())
+        for relative, sha in sorted(self.file_hashes().items()):
+            digest.update(f"{relative}={sha}\0".encode())
+        self._fingerprint = f"sha256:{digest.hexdigest()}"
+        return self._fingerprint
 
     def _render(self, text: str) -> str:
         return text.replace("{{audience}}", self.audience).replace("{{domain}}", self.domain)
