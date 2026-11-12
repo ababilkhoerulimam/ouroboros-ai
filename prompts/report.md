@@ -66,6 +66,13 @@ Rules:
   `turun {{E-004}} (dari {{E-005}} ke {{E-006}})`, never `turun {{E-004}}` alone.
 - At most two slots per sentence. More than that becomes unreadable.
 - If a slot does not exist in evidence, the sentence is wrong. Rewrite it.
+- **Text you did not write is still text you publish.** Anything copied from `notes/`
+  keeps its own punctuation. Normalize it before it enters the report:
+  `.replace("\u2014", "-").replace("\u2013", "-")`. The banned-character check runs on
+  the assembled report, so an em-dash inside the data dictionary fails the publish
+  even when every sentence you wrote is clean.
+- **Two slots, counted per sentence.** A sentence carrying three slots fails the
+  publish. Split it in two; do not drop a number to make it fit.
 
 ## Language
 
@@ -121,7 +128,11 @@ sentence of action with owner and deadline. Do not summarise the whole report he
 summarise the decisions.
 
 **Apa yang diperiksa.** One paragraph. Name the files, the period covered, and what
-was thrown away. Honesty here buys trust for everything after.
+was thrown away, each with the stage that threw it away. Loading and notebook cleaning
+are different stages: a column the profiler dropped before the notebook opened is not
+a column the notebook dropped, and the cleaning log will not list it. Write "dibuang
+saat memuat" or "dibuang saat pembersihan notebook", never a bare "dibuang". If the
+cleaning log records no drop, claim none. Honesty here buys trust for everything after.
 
 **Apa yang terjadi.** Lead with the direction and size of the change, then the
 segment that drives it. One chart, one message.
@@ -161,13 +172,14 @@ All twelve must pass. Fix, do not explain.
 2. Every decision has an action with owner and deadline.
 3. Every percentage has its nominal.
 4. Every figure is a slot; no literal numbers outside slots.
-5. No em-dash.
+5. No em-dash, including one imported from `notes/` or the data dictionary.
 6. No banned word.
 7. Every chart has a finding title and is referenced.
 8. Every chart has a matching number table.
 9. Section 8 exists and is not empty.
 10. Every cited `E-###` appears in the appendix table.
-11. Paragraphs at most four lines, sentences at most twenty words.
+11. Paragraphs at most four lines, sentences at most twenty words and at most two
+    slots.
 12. No claim without its comparison.
 
 ## Output
