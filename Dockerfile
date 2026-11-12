@@ -16,6 +16,11 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+# Prompt adalah data runtime, bukan bagian paket: `pip install .` menaruh modul
+# di site-packages, sementara `phases._default_prompts_dir()` jatuh ke
+# `cwd/prompts`. Tanpa baris ini container gagal di F1 dengan
+# "prompt tidak ditemukan: /usr/local/lib/python3.11/prompts/system.md".
+COPY prompts ./prompts
 
 RUN pip install --no-cache-dir . \
     && useradd --create-home --uid 10001 swarmfold \
