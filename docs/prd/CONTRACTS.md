@@ -31,6 +31,7 @@ runs/<run_id>/
   laporan.docx               salinan Word dari laporan terbit
   laporan.pdf
   status.json
+  provenance.json            versi kebijakan, model, dan input (tidak ikut paket unduhan)
   done.json                  sentinel
 ```
 
@@ -127,6 +128,7 @@ Diperbarui setiap transisi state.
   "updated_at": "2026-11-10T10:12:41Z",
   "inputs": [{"name": "penjualan.xlsx", "sha256": "…", "bytes": 48211}],
   "dataset_hash": "sha256:…",
+  "prompt_fingerprint": "sha256:…",
   "env": {"pandas": "2.2.2", "numpy": "1.26.4", "python": "3.11.9"},
   "model": {"requested": "ag/gemini-3.8-flash-high", "returned": "gemini-3.8-flash-n"},
   "usage": {"tokens_in": 0, "tokens_out": 0, "cost_estimate": 0.0},
@@ -140,7 +142,28 @@ Aturan:
 - `state` hanya boleh bergerak maju, kecuali ke `failed`.
 - `phase` dan `cell` adalah posisi saat ini, bukan hasil akhir.
 - `dataset_hash` adalah sha256 dari peta `{nama berkas di data/: sha256}`, dibekukan saat run mulai. `dataset_hash` pada finding harus sama persis dengan nilai ini, sehingga run multi-berkas tidak bisa memakai hash salah satu berkas saja.
+- `prompt_fingerprint` adalah sha256 dari pack, persona, dan isi setiap berkas prompt yang terpakai. Dua run dengan fingerprint berbeda memakai kebijakan berbeda; tanpa ini perbaikan tidak bisa diatribusikan ke patch.
 - `warnings` tidak pernah dikosongkan; peringatan bersifat akumulatif.
+
+### `provenance.json`
+
+Ditulis saat run berakhir (juga pada jalur gagal) dan **tidak** ikut paket unduhan: isinya metadata infrastruktur, bukan deliverable klien.
+
+```json
+{
+  "schema": 1,
+  "run_id": "2026-11-10-a1b2c3",
+  "build": {"image": "swarmfold:local", "build_sha": "2a32e7c", "git_sha": "…", "git_dirty": false},
+  "prompts": {"fingerprint": "sha256:…", "pack": "business", "files": {"evidence.md": "…"}},
+  "model": {"requested": "…", "returned": "…"},
+  "settings": {"model": "…", "temperature": null, "top_p": null, "seed": null},
+  "inputs": [{"name": "penjualan.xlsx", "sha256": "…", "bytes": 48211}],
+  "dataset_hash": "…",
+  "env": {"python": "3.11.9"}
+}
+```
+
+`git_dirty` bernilai `null` bila commit tidak diketahui (image tanpa `.git` dan `SWARMFOLD_BUILD_SHA` kosong); `null` berarti "tidak bisa dibuktikan", bukan "bersih".
 
 ## 3. `cells/index.json`
 
