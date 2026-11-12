@@ -66,6 +66,10 @@ Rules:
   `turun {{E-004}} (dari {{E-005}} ke {{E-006}})`, never `turun {{E-004}}` alone.
 - At most two slots per sentence. More than that becomes unreadable.
 - If a slot does not exist in evidence, the sentence is wrong. Rewrite it.
+- **A slot is the quantity its finding measured.** A total is not a per-case cost, a
+  nominal is not a period, and a rate is not a count.
+- **The slot's sign decides the verb.** Never "naik" for a negative slot; if share
+  and rupiah disagree, name both without a verb.
 - **Text you did not write is still text you publish.** Anything copied from `notes/`
   keeps its own punctuation. Normalize it before it enters the report:
   `.replace("\u2014", "-").replace("\u2013", "-")`. The banned-character check runs on
@@ -97,6 +101,9 @@ Banned, in any form:
 - filler openers ("Penting untuk dicatat bahwa", "Perlu dipahami bahwa",
   "Di era digital ini")
 - closing motivation ("mari kita tingkatkan bersama")
+- "membuktikan" / "terbukti" for a decomposition or attribution share (write
+  "menunjukkan")
+- "terukur" for a bound built on an assumption (write "batas atas" or "asumsi")
 
 ## Numbers
 
@@ -133,6 +140,9 @@ are different stages: a column the profiler dropped before the notebook opened i
 a column the notebook dropped, and the cleaning log will not list it. Write "dibuang
 saat memuat" or "dibuang saat pembersihan notebook", never a bare "dibuang". If the
 cleaning log records no drop, claim none. Honesty here buys trust for everything after.
+The table keeps its columns: file, granularity, row count, key uniqueness, cleaning
+note. One cell carries one quantity; a percentage in the row-count column is a
+different measurement wearing the wrong header.
 
 **Apa yang terjadi.** Lead with the direction and size of the change, then the
 segment that drives it. One chart, one message.
@@ -141,7 +151,9 @@ segment that drives it. One chart, one message.
 total change, residual zero. Show the residual, even when it is zero.
 
 **Siapa dan kapan.** Only if the data has a customer identifier or stage column. If
-not, write one sentence saying this analysis was not possible, and move on.
+not, write one sentence saying this analysis was not possible, and move on. Name the
+cohort anchor exactly: "bulan pertama polis", not "klaim pertama" — the first month
+holds many claims, the first claim is one.
 
 **Kalau dibiarkan.** Three scenarios with written assumptions. No point forecast.
 State the range and what would make the optimistic case true.
@@ -170,8 +182,9 @@ All twelve must pass. Fix, do not explain.
 
 1. Summary on page one, at most three decisions.
 2. Every decision has an action with owner and deadline.
-3. Every percentage has its nominal.
-4. Every figure is a slot; no literal numbers outside slots.
+3. Every percentage has its nominal, and no verb contradicts its sign.
+4. Every figure is a slot of the quantity its finding measured; no literal numbers
+   outside slots.
 5. No em-dash, including one imported from `notes/` or the data dictionary.
 6. No banned word.
 7. Every chart has a finding title and is referenced.

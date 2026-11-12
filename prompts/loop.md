@@ -18,15 +18,16 @@ evidence_in_phase=3
 checkpoint_in=4
 legal_next=F2,F4,F5
 stalls=0
-next_ids=E-015,H-003
+next_ids=E-015,H-003,AN-002
 ```
 
 Read it before deciding anything. If the state says `legal_next=F2,F4,F5`, then F7
 is not an option, no matter how finished you feel.
 
-`next_ids` is the next free id for each kind, counted across every phase. Use it
-instead of guessing: ids are shared by the whole run, so `H-001` written in F2 is
-taken for F6 as well.
+`next_ids` is the next free id for each kind — `E-###`, `H-###`, and `AN-###` —
+counted across every phase. Use it instead of guessing: ids are shared by the whole
+run, so `H-001` written in F2 is taken for F6 as well, and `AN-001` written in F1 is
+taken for F3.
 
 ## Decision order
 

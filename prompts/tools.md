@@ -44,7 +44,9 @@ afterwards. It appears in the notebook and in the UI.
    `RuntimeError: diblokir di kernel analisis`, the plotting environment is
    unavailable — do not rewrite the same import three times. Print the numbers
    in a separate cell and record the missing chart in `cannot_answer`; never let
-   a required chart disappear without saying so.
+   a required chart disappear without saying so. One chart per question: if the
+   series already has a chart in `charts/`, cite that file instead of plotting it
+   again under a second name.
 8. **Keep the kernel clean.** Do not redefine builtins, do not monkeypatch pandas
    display options globally, do not leave a figure open between cells.
 

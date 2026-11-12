@@ -94,6 +94,10 @@ share is a different quantity, and quoting the wrong one is the most common way 
 correct measurement becomes a wrong claim. When both matter, record both as
 separate findings with separate ids.
 
+**`display` is copied, not composed.** Every number in it, not only the first, must
+appear in the artifact. A percentage you derived from two printed counts is not a
+measurement; print it in a cell first, or leave it out of `display`.
+
 ## Statement rules
 
 - One sentence, falsifiable, with period and base.
