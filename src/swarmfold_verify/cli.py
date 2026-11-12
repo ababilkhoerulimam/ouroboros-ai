@@ -14,11 +14,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import cases, checks, scorer
+from . import cases, checks, pins, scorer
 from .truth import load as load_truth
 
 #: `evals/` di akar repo: src/swarmfold_verify/cli.py → naik tiga tingkat.
 DEFAULT_ROOT = Path(__file__).resolve().parents[2] / "evals"
+DEFAULT_STORE = DEFAULT_ROOT / "pins"
 
 
 def _print(data: Any) -> None:
@@ -52,6 +53,28 @@ def _score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pin(args: argparse.Namespace) -> int:
+    sumber = args.source or Path(__file__).resolve().parent
+    lock = pins.pin(sumber, args.store)
+    _print(
+        {
+            "digest": lock["digest"],
+            "files": sorted(lock["files"]),
+            "store": str(args.store),
+            "lock": str(Path(args.store) / pins.LOCK_NAME),
+        }
+    )
+    return 0
+
+
+def _verify_pin(args: argparse.Namespace) -> int:
+    store = Path(args.store)
+    lock = pins.read_lock(store / pins.LOCK_NAME)
+    masalah = pins.verify(pins.snapshot_dir(store, lock), lock)
+    _print({"digest": lock["digest"], "problems": masalah, "count": len(masalah)})
+    return 1 if masalah else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="swarmfold-verify", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -70,6 +93,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_score.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     p_score.add_argument("--out", type=Path, default=None)
     p_score.set_defaults(func=_score)
+
+    p_pin = sub.add_parser("pin", help="bekukan paket verifier ke store + lock")
+    p_pin.add_argument("--source", type=Path, default=None)
+    p_pin.add_argument("--store", type=Path, default=DEFAULT_STORE)
+    p_pin.set_defaults(func=_pin)
+
+    p_verify = sub.add_parser("verify-pin", help="periksa snapshot pin terhadap lock")
+    p_verify.add_argument("--store", type=Path, default=DEFAULT_STORE)
+    p_verify.set_defaults(func=_verify_pin)
     return parser
 
 

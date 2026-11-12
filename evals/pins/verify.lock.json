@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "package": "swarmfold_verify",
+  "digest": "sha256:4c969149755a787325536dd21b3f2b5b075f7b53b1f8911db95f1f46b8a98d4d",
+  "files": {
+    "__init__.py": "sha256:40894da6872f46b82cdda98003194ca24edb04635347e8978601de7b7d3733c9",
+    "cases.py": "sha256:fc0b36607af42a41b71ebc11f935af5e5a55220bdfe46ce2e8911af7d3b9f2d5",
+    "checks.py": "sha256:80f169d5443ecb3e7c89c635f36bea6319b2bcca486cd2c0324d02cabddec430",
+    "cli.py": "sha256:95c7639cf8b5ea18f8e77ef50e7010926aae7bc55e9915c4b519a4462438db39",
+    "generate.py": "sha256:b5dcd5d9888c7ec9c9bd7a3438d4489eccc97cdeb099008eaa19a2064f9dd016",
+    "pins.py": "sha256:0b971cdee0148e9a8d18c4db3ed368799fad53178b8a1fac215f06cc4854c2b0",
+    "scorer.py": "sha256:6a999af63de10c0bb11bbc84ff7394c740718768babb9fe3f9192e59a4d18d1f",
+    "truth.py": "sha256:fd0ce1483813f04c95f96f13d377b3d4af2dc3b2803dfa5f7c84235f7a4281c1"
+  }
+}

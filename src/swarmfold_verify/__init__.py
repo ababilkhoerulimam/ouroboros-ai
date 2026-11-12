@@ -7,4 +7,4 @@ dihitung dari salinan yang di-pin (lihat `pins.py`).
 
 from __future__ import annotations
 
-__all__ = ["cases", "checks", "cli", "generate", "scorer", "truth"]
+__all__ = ["cases", "checks", "cli", "generate", "pins", "scorer", "truth"]
