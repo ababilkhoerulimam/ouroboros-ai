@@ -40,7 +40,11 @@ afterwards. It appears in the notebook and in the UI.
    unavailable and will fail.
 7. **Charts:** create the figure, save it to `charts/`, and call `plt.show()` so
    the kernel captures the image. Name files deterministically:
-   `charts/F2_03_tren_bulanan.png`.
+   `charts/F2_03_tren_bulanan.png`. If a chart raises
+   `RuntimeError: diblokir di kernel analisis`, the plotting environment is
+   unavailable — do not rewrite the same import three times. Print the numbers
+   in a separate cell and record the missing chart in `cannot_answer`; never let
+   a required chart disappear without saying so.
 8. **Keep the kernel clean.** Do not redefine builtins, do not monkeypatch pandas
    display options globally, do not leave a figure open between cells.
 
