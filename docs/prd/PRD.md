@@ -15,8 +15,8 @@ menulis cell berikutnya, sampai analisis selesai.
 Hasil akhir yang dapat diunduh dalam satu paket:
 
 1. `analysis.ipynb` — notebook yang sudah dieksekusi, seluruh output dan chart tertanam.
-2. `laporan.md` + `laporan.pdf` — laporan berbahasa Indonesia untuk pemilik usaha,
-   mengikuti `REPORT-STANDARD.md`.
+2. `laporan.md` + `laporan.docx` + `laporan.pdf` — laporan berbahasa Indonesia untuk
+   pemilik usaha, mengikuti `REPORT-STANDARD.md`.
 3. `data_bersih.csv` + `data_dictionary.md` + `cleaning_log.json` — data siap pakai.
 4. `audit/` — jejak bukti: setiap angka di laporan dapat ditelusuri ke cell asalnya.
 
@@ -125,6 +125,7 @@ Satu file `paket-<run_id>.zip`:
 |---|---|---|
 | `analysis.ipynb` | notebook tereksekusi, output + chart tertanam | ya |
 | `laporan.md` | laporan bahasa Indonesia; dibatasi 3 keputusan dan 6 chart, bukan halaman | ya |
+| `laporan.docx` | versi Word dari laporan | ya |
 | `laporan.pdf` | versi cetak dari laporan | ya |
 | `data_bersih.csv` | data hasil pembersihan | ya |
 | `data_dictionary.md` | arti kolom, satuan, asal | ya |

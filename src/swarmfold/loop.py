@@ -16,6 +16,7 @@ from .docx_export import export_docx
 from .evidence import EvidenceStore, deepdive_due, next_deepdive_path
 from .kernel import KernelSession, NotebookWriter
 from .llm import ModelClient, ModelError, ModelTurn
+from .pdf_export import export_pdf
 from .phases import PHASES, PhaseController, PromptLibrary
 from .report import ReportError, render_slots
 from .runtime import (
@@ -103,9 +104,10 @@ class AgentLoop:
         self.nudges = 0
         self._state_index: int | None = None
         self.errors: list[str] = []
-        #: Kegagalan ekspor `.docx`. Laporan markdown tetap kanonik, jadi ini
-        #: peringatan yang tercatat, bukan alasan menggagalkan run.
+        #: Kegagalan ekspor `.docx`/`.pdf`. Laporan markdown tetap kanonik, jadi
+        #: ini peringatan yang tercatat, bukan alasan menggagalkan run.
         self.docx_error = ""
+        self.pdf_error = ""
         self.phase_start_cell = 0
         self.dataset_hash = ""
         self.mode = "full"
@@ -565,12 +567,7 @@ class AgentLoop:
             "",
         ]
         atomic_write_text(self.paths.report_file, "\n".join(lines))
-        try:
-            export_docx(
-                "\n".join(lines), self.paths.report_docx_file, base_dir=self.paths.dir
-            )
-        except Exception as exc:  # noqa: BLE001 - laporan md tetap terbit
-            self.docx_error = f"{type(exc).__name__}: {exc}"
+        self._export_copies("\n".join(lines))
         atomic_write_json(
             self.paths.done_file,
             {
@@ -585,7 +582,9 @@ class AgentLoop:
                     "report_docx": (
                         "laporan.docx" if self.paths.report_docx_file.exists() else ""
                     ),
-                    "report_pdf": "",
+                    "report_pdf": (
+                        "laporan.pdf" if self.paths.report_pdf_file.exists() else ""
+                    ),
                     "clean_data": "",
                 },
                 "verification": {"rerun": "skipped", "mismatches": []},
@@ -649,8 +648,13 @@ class AgentLoop:
             if report_error:
                 self.errors.append(f"report: {report_error}")
                 self.status.warn(f"report: {report_error}")
-            elif self.docx_error:
-                self.status.warn(f"report docx: {self.docx_error}")
+            elif self.docx_error or self.pdf_error:
+                for label, message in (
+                    ("docx", self.docx_error),
+                    ("pdf", self.pdf_error),
+                ):
+                    if message:
+                        self.status.warn(f"report {label}: {message}")
 
         status = toolbox.ctx.finish_status or "partial"
         if problems or report_error or toolbox.ctx.fatal:
@@ -673,7 +677,7 @@ class AgentLoop:
                 "report_docx": (
                     "laporan.docx" if self.paths.report_docx_file.exists() else ""
                 ),
-                "report_pdf": "",
+                "report_pdf": "laporan.pdf" if self.paths.report_pdf_file.exists() else "",
                 "clean_data": "derived/01_clean.csv" if self.paths.clean_data_file.exists() else "",
             },
             "verification": {"rerun": "skipped", "mismatches": problems},
@@ -681,6 +685,7 @@ class AgentLoop:
                 "rendered": not report_error,
                 "error": report_error,
                 "docx_error": self.docx_error,
+                "pdf_error": self.pdf_error,
             },
             "summary": toolbox.ctx.finish_summary or "run berhenti tanpa ringkasan model",
             "finished_at": utc_now(),
@@ -722,13 +727,24 @@ class AgentLoop:
             return str(exc)
         atomic_write_text(self.paths.report_template_file, template)
         atomic_write_text(self.paths.report_file, rendered)
-        # `.docx` adalah salinan untuk pembaca, bukan sumber kebenaran: bila
-        # ekspornya gagal, laporan markdown tetap terbit dan galatnya dicatat.
-        try:
-            export_docx(rendered, self.paths.report_docx_file, base_dir=self.paths.dir)
-        except Exception as exc:  # noqa: BLE001 - semua kegagalan ekspor dicatat
-            self.docx_error = f"{type(exc).__name__}: {exc}"
+        self._export_copies(rendered)
         return ""
+
+    def _export_copies(self, text: str) -> None:
+        """Tulis salinan `.docx` dan `.pdf`; kegagalan dicatat per format.
+
+        Markdown tetap kanonik: salinan yang gagal tidak membatalkan laporan,
+        tetapi tidak boleh hilang diam-diam, jadi galatnya disimpan untuk
+        `status.warn` dan `done.json`.
+        """
+        for export, target, attribute in (
+            (export_docx, self.paths.report_docx_file, "docx_error"),
+            (export_pdf, self.paths.report_pdf_file, "pdf_error"),
+        ):
+            try:
+                export(text, target, base_dir=self.paths.dir)
+            except Exception as exc:  # noqa: BLE001 - semua kegagalan ekspor dicatat
+                setattr(self, attribute, f"{type(exc).__name__}: {exc}")
 
     def _skipped(self) -> list[dict[str, str]]:
         return [

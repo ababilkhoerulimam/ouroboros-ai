@@ -280,6 +280,12 @@ relatif terhadap akar run.
 `mixed` bila unit memilih pack berbeda; pack tiap unit tetap ada di
 `datasets/<id>/done.json`.
 
+Laporan terbit dalam tiga bentuk: `laporan.md` (kanonik, hasil render slot),
+`laporan.docx`, dan `laporan.pdf`. Kegagalan ekspor salah satu salinan tidak
+membatalkan laporan; galatnya dicatat di `report.docx_error` / `report.pdf_error`
+dan di `status.json.warnings`, lalu `deliverables` untuk format itu berisi string
+kosong.
+
 ## 8. Slot laporan
 
 Laporan ditulis sebagai markdown dengan slot. Renderer mengganti slot dengan

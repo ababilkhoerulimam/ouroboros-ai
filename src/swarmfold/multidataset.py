@@ -21,6 +21,7 @@ from typing import Any
 
 from .docx_export import export_docx
 from .loop import AgentLoop, RunOutcome
+from .pdf_export import export_pdf
 from .phases import PHASES
 from .runtime import (
     RunPaths,
@@ -204,15 +205,17 @@ def merge_reports(run: RunPaths, units: list[UnitResult]) -> str:
     atomic_write_text(run.report_file, "\n".join(lines).rstrip() + "\n")
     # Laporan gabungan memakai path gambar relatif terhadap akar run, jadi
     # base_dir-nya run, bukan direktori unit.
-    try:
-        export_docx(
-            run.report_file.read_text(encoding="utf-8"),
-            run.report_docx_file,
-            base_dir=run.dir,
-        )
-    except Exception as exc:  # noqa: BLE001 - markdown tetap kanonik
-        return f"{type(exc).__name__}: {exc}"
-    return ""
+    text = run.report_file.read_text(encoding="utf-8")
+    errors: list[str] = []
+    for export, target in (
+        (export_docx, run.report_docx_file),
+        (export_pdf, run.report_pdf_file),
+    ):
+        try:
+            export(text, target, base_dir=run.dir)
+        except Exception as exc:  # noqa: BLE001 - markdown tetap kanonik
+            errors.append(f"{type(exc).__name__}: {exc}")
+    return "; ".join(errors)
 
 
 def _rebase_paths(text: str, run: RunPaths, unit: RunPaths) -> str:
@@ -284,7 +287,7 @@ def build_done(
             ],
             "report_md": _deliverable(run, run.report_file),
             "report_docx": _deliverable(run, run.report_docx_file),
-            "report_pdf": "",
+            "report_pdf": _deliverable(run, run.report_pdf_file),
             "clean_data": [
                 name
                 for unit in units
