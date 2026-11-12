@@ -222,3 +222,6 @@ __marimo__/
 # swarmfold runtime
 runs/
 inbox/
+
+# worktree sementara loop evolusi
+evals/worktrees/
