@@ -25,6 +25,11 @@ COPY prompts ./prompts
 RUN pip install --no-cache-dir . \
     && useradd --create-home --uid 10001 swarmfold \
     && mkdir -p /runs /inbox /tmp/matplotlib /tmp/ipython /tmp/jupyter-runtime \
+    # Cache font dibangun di sini, bukan di kernel: font_manager memanggil
+    # `fc-list` lewat subprocess saat cache belum ada, dan kernel analisis
+    # memblokir subprocess (kernel.py) sehingga `import matplotlib.pyplot`
+    # gagal RuntimeError pada cell pertama di container baru.
+    && python -c "import matplotlib.font_manager as fm; fm.fontManager" \
     && chown -R swarmfold:swarmfold /app /runs /tmp/matplotlib /tmp/ipython /tmp/jupyter-runtime
 
 USER swarmfold
