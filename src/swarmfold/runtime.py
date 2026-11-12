@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +17,13 @@ from typing import Any
 # Urutan maju. `failed` dan `interrupted` boleh dari state mana pun.
 _STATE_ORDER = ("queued", "running", "verifying", "packaging", "done")
 _TERMINAL_ANY = ("failed", "interrupted")
+
+#: `os.replace` di bind mount Windows gagal `PermissionError` selama berkas tujuan
+#: dibuka proses host (pemantau, editor). Docker Desktop memetakan sharing
+#: violation Windows ke EACCES, jadi satu pembaca di host cukup untuk mematikan
+#: run lewat kegagalan penulisan status. Ulangi sebentar sebelum menyerah.
+_REPLACE_ATTEMPTS = 5
+_REPLACE_BACKOFF_S = 0.05
 
 
 class StatusError(RuntimeError):
@@ -30,6 +38,18 @@ def new_run_id() -> str:
     return f"{datetime.now(UTC):%Y-%m-%d}-{secrets.token_hex(3)}"
 
 
+def _replace_with_retry(tmp: Path, path: Path) -> None:
+    """`os.replace`, diulang sebentar bila berkas tujuan sedang dibaca host."""
+    for attempt in range(1, _REPLACE_ATTEMPTS + 1):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_ATTEMPTS:
+                raise
+            time.sleep(_REPLACE_BACKOFF_S * attempt)
+
+
 def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{secrets.token_hex(4)}.tmp")
@@ -38,7 +58,7 @@ def atomic_write_text(path: Path, text: str) -> None:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise

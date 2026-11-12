@@ -62,6 +62,32 @@ def test_atomic_write_leaves_no_tmp_file(tmp_path: Path) -> None:
     assert list(tmp_path.glob("*.tmp")) == []
 
 
+def test_atomic_write_retries_replace_when_target_is_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Docker Desktop Windows mengembalikan PermissionError dari os.replace selama
+    # berkas tujuan dibuka proses host (pemantau, editor). Satu pembaca tidak boleh
+    # mematikan run: run 2026-11-12-0c2282 berhenti di F1 karena ini.
+    target = tmp_path / "status.json"
+    atomic_write_json(target, {"a": 1})
+
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(src, dst):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError(13, "Permission denied")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(runtime.os, "replace", flaky_replace)
+    atomic_write_json(target, {"a": 2})
+
+    assert calls["n"] == 3
+    assert read_json(target) == {"a": 2}
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
 def test_read_json_returns_default_on_corrupt_or_missing_file(tmp_path: Path) -> None:
     corrupt = tmp_path / "status.json"
     corrupt.write_text("{bukan json", encoding="utf-8")
