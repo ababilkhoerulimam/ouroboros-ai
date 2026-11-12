@@ -82,6 +82,12 @@ You receive `error` with the exception type and message, and the traceback in th
 notebook. Read the actual cause before rewriting. Maximum three attempts on the
 same intent; after that, record the blocker and move on.
 
+A `KeyError` means the column is not in the frame you are using — not that the
+data is missing. Print `frame.columns.tolist()` and `len(frame)` before
+rewriting, then use a name that actually exists. A variable from an earlier cell
+does not necessarily hold the frame you think it does; re-read the file when in
+doubt, and never retry the same intent with a different guessed column name.
+
 ## read_file
 
 ```
