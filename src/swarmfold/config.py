@@ -95,6 +95,10 @@ class Settings:
     temperature: float | None = None
     top_p: float | None = None
     seed: int | None = None
+    #: Plafon token keluaran. None berarti tidak dikirim, sehingga plafon
+    #: gateway yang berlaku. Angka maksimum berbeda per gateway, jadi nilainya
+    #: tidak ditebak di kode.
+    max_tokens: int | None = None
     #: Model untuk peran reviewer di loop evolusi. Kosong berarti worker dipakai.
     reviewer_model: str = ""
     #: Akar benchmark, pin verifier, dan ledger evolusi.
@@ -124,6 +128,7 @@ class Settings:
             temperature=_env_float(source, "SWARMFOLD_TEMPERATURE", lo=0.0, hi=2.0),
             top_p=_env_float(source, "SWARMFOLD_TOP_P", lo=0.0, hi=1.0),
             seed=_env_optional_int(source, "SWARMFOLD_SEED"),
+            max_tokens=_env_optional_int(source, "SWARMFOLD_MAX_TOKENS", minimum=1),
             reviewer_model=(source.get("SWARMFOLD_REVIEWER_MODEL") or "").strip(),
             eval_root=Path((source.get("SWARMFOLD_EVAL_ROOT") or "./evals").strip()),
         )
@@ -156,6 +161,7 @@ class Settings:
             "temperature": self.temperature,
             "top_p": self.top_p,
             "seed": self.seed,
+            "max_tokens": self.max_tokens,
             "reviewer_model": self.reviewer_model,
             "base_url_configured": self.base_url is not None,
         }

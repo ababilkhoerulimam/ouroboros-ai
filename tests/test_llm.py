@@ -370,12 +370,14 @@ def test_sampling_dikirim_hanya_bila_diisi() -> None:
     assert "temperature" not in seen
     assert "top_p" not in seen
     assert "seed" not in seen
+    assert "max_tokens" not in seen
 
-    _client(handler, temperature=0.2, top_p=0.9, seed=7).chat(
+    _client(handler, temperature=0.2, top_p=0.9, seed=7, max_tokens=4096).chat(
         [{"role": "user", "content": "halo"}]
     )
 
     assert (seen["temperature"], seen["top_p"], seen["seed"]) == (0.2, 0.9, 7)
+    assert seen["max_tokens"] == 4096
 
 
 def test_nama_model_dari_respons_dicatat() -> None:

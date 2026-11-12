@@ -100,6 +100,7 @@ class ModelClient:
         temperature: float | None = None,
         top_p: float | None = None,
         seed: int | None = None,
+        max_tokens: int | None = None,
     ):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -109,9 +110,15 @@ class ModelClient:
         self._retry_delays = tuple(retry_delays)
         self._empty_delays = tuple(empty_delays)
         self._transport = transport
-        self._sampling = {
+        # Parameter yang hanya dikirim bila diisi; None berarti default gateway.
+        self._params = {
             key: value
-            for key, value in (("temperature", temperature), ("top_p", top_p), ("seed", seed))
+            for key, value in (
+                ("temperature", temperature),
+                ("top_p", top_p),
+                ("seed", seed),
+                ("max_tokens", max_tokens),
+            )
             if value is not None
         }
 
@@ -125,7 +132,7 @@ class ModelClient:
             # Wajib: tanpa ini gateway membalas SSE, bukan JSON.
             "stream": False,
         }
-        payload.update(self._sampling)
+        payload.update(self._params)
         if tools:
             payload["tools"] = tools
             # Loop ini digerakkan tool: turn tanpa tool call tidak menambah apa pun,

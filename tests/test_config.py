@@ -87,3 +87,18 @@ def test_public_dict_records_sampling_without_secret() -> None:
     assert public["seed"] == 7
     assert public["temperature"] is None
     assert "kunci-uji" not in str(public)
+
+
+def test_max_tokens_from_env_reaches_public_dict() -> None:
+    assert Settings.from_env({}).max_tokens is None
+
+    settings = Settings.from_env({"SWARMFOLD_MAX_TOKENS": "8192"})
+
+    assert settings.max_tokens == 8192
+    assert settings.public_dict()["max_tokens"] == 8192
+
+
+@pytest.mark.parametrize("nilai", ["0", "-5", "banyak"])
+def test_max_tokens_out_of_range_is_rejected(nilai: str) -> None:
+    with pytest.raises(ConfigError):
+        Settings.from_env({"SWARMFOLD_MAX_TOKENS": nilai})

@@ -868,4 +868,5 @@ def build_client(settings: Settings) -> ModelClient:
         temperature=settings.temperature,
         top_p=settings.top_p,
         seed=settings.seed,
+        max_tokens=settings.max_tokens,
     )
