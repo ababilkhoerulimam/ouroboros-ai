@@ -8,6 +8,11 @@ services:
       - "127.0.0.1:8080:8080"
     env_file:
       - .env
+    environment:
+      # Harus sama dengan mount di bawah. Default `./runs` di config.py berarti
+      # /app/runs di dalam container, jadi artefak run tidak pernah sampai ke
+      # host dan hilang begitu container di-recreate.
+      SWARMFOLD_DATA_ROOT: /runs
     volumes:
       - ./runs:/runs
       - ./inbox:/inbox:ro
