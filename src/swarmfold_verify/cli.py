@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import cases, checks, pins, scorer
+from . import cases, checks, pins, scorer, split
 from .truth import load as load_truth
 
 #: `evals/` di akar repo: src/swarmfold_verify/cli.py → naik tiga tingkat.
@@ -75,6 +75,12 @@ def _verify_pin(args: argparse.Namespace) -> int:
     return 1 if masalah else 0
 
 
+def _verify_splits(args: argparse.Namespace) -> int:
+    masalah = split.verify(args.root)
+    _print({"root": str(args.root), "problems": masalah, "count": len(masalah)})
+    return 1 if masalah else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="swarmfold-verify", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -102,6 +108,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify = sub.add_parser("verify-pin", help="periksa snapshot pin terhadap lock")
     p_verify.add_argument("--store", type=Path, default=DEFAULT_STORE)
     p_verify.set_defaults(func=_verify_pin)
+
+    p_splits = sub.add_parser("verify-splits", help="cocokkan splits.json dengan truth")
+    p_splits.add_argument("--root", type=Path, default=DEFAULT_ROOT)
+    p_splits.set_defaults(func=_verify_splits)
     return parser
 
 
