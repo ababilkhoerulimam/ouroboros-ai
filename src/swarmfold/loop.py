@@ -33,6 +33,8 @@ from .triage import MODE_CLEANING, MODE_INSUFFICIENT, Triage, triage_profile
 MAX_NUDGES = 2
 #: Turn berurutan tanpa satu pun tool yang berhasil sebelum run dihentikan.
 MAX_STUCK_TURNS = 3
+#: Berapa kali model diingatkan memanggil `finish` setelah `laporan.md` ada.
+MAX_FINISH_REMINDERS = 1
 
 
 class ChatClient(Protocol):
@@ -102,6 +104,7 @@ class AgentLoop:
         self.cells_since_checkpoint = 0
         self.checkpoint_pending: Path | None = None
         self.nudges = 0
+        self.finish_reminders = 0
         self._state_index: int | None = None
         self.errors: list[str] = []
         #: Kegagalan ekspor `.docx`/`.pdf`. Laporan markdown tetap kanonik, jadi
@@ -252,7 +255,28 @@ class AgentLoop:
                 toolbox.ctx.finished = False
                 continue
             if self.controller.current == "F7" and self.paths.report_file.exists():
-                toolbox.ctx.finished = True
+                # loop.md aturan 7: laporan ada berarti `finish`. Loop tidak boleh
+                # menutup run lebih dulu: tanpa giliran ini model tidak pernah
+                # memanggil `finish`, status jatuh ke partial, dan ringkasan
+                # dilaporkan sebagai "run berhenti tanpa ringkasan model".
+                if self.finish_reminders < MAX_FINISH_REMINDERS:
+                    self.finish_reminders += 1
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "## Laporan sudah ada\n"
+                                "`laporan.md` sudah ditulis. Panggil `finish(status, summary)` "
+                                "sekarang: `ok` bila laporan lolos exit check F7, `partial` bila "
+                                "ada bagian yang tidak bisa dijawab. Ringkasan memuat keputusan "
+                                "yang diambil, bukan ringkasan proses."
+                            ),
+                        }
+                    )
+                    continue
+                self.errors.append(
+                    "laporan.md ada tetapi model tidak memanggil finish; status tidak bisa ok"
+                )
                 return
 
             stuck = 0 if progress else stuck + 1
@@ -747,11 +771,8 @@ class AgentLoop:
                 setattr(self, attribute, f"{type(exc).__name__}: {exc}")
 
     def _skipped(self) -> list[dict[str, str]]:
-        return [
-            {"phase": name, "reason": "tidak ditandai selesai oleh model"}
-            for name in ("F4", "F5")
-            if not self.controller.is_completed(name)
-        ]
+        """Fase yang ditutup sebagai tidak berlaku, dengan alasan model."""
+        return self.controller.skipped()
 
     def _cells_index(self) -> dict[str, Any]:
         import json

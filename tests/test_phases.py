@@ -108,6 +108,25 @@ def test_phase_closed_as_not_applicable_is_not_completed(tmp_path):
     assert controller.is_completed("F4") is False
 
 
+def test_f4_tidak_berlaku_menyimpan_alasan_untuk_done_json(tmp_path):
+    # CONTRACTS.md paragraf 7: `phases_skipped` memuat alasan model, bukan
+    # kalimat bawaan controller.
+    controller, store = _controller(tmp_path)
+    _to_f2(controller)
+    _add(store, "F2", "E-001")
+    assert controller.advance("F4").ok
+
+    reason = "F4 tidak berlaku: tidak ada identifier pelanggan"
+    assert controller.advance("F5", reason, close_current=False).ok
+
+    assert controller.is_closed("F4") is True
+    assert controller.is_completed("F4") is False
+    assert controller.skipped() == [{"phase": "F4", "reason": reason}]
+
+    reloaded = PhaseController(controller.paths, store)
+    assert reloaded.skipped() == [{"phase": "F4", "reason": reason}]
+
+
 def test_f2_needs_a_verified_finding(tmp_path):
     controller, store = _controller(tmp_path)
     _to_f2(controller)

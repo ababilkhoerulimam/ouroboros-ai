@@ -277,6 +277,30 @@ def test_forced_pack_wins_over_triage(tmp_path, settings) -> None:
     assert read_json(paths.done_file)["pack"] == "business"
 
 
+def test_f4_tidak_berlaku_lalu_finish_ok_menghasilkan_run_penuh(
+    run: RunPaths, settings
+) -> None:
+    # ef2116: F4 ditutup sah sebagai tidak berlaku, tetapi loop berhenti sebelum
+    # model memanggil `finish` dan `phases_skipped` memakai kalimat bawaan.
+    turns = [
+        tool_turn(run_cell("open('laporan.md', 'w', encoding='utf-8').write('# Laporan')")),
+        tool_turn(finish("ok", "tiga keputusan")),
+    ]
+    loop = AgentLoop(run, settings, ScriptedModel(turns), Brief())
+    reason = "F4 tidak berlaku: tidak ada identifier pelanggan"
+    loop.controller.force("F4", "uji jalur laporan")
+    assert loop.controller.advance("F5", reason, close_current=False).ok
+    loop.controller.force("F7", "uji jalur laporan")
+
+    outcome = loop.run()
+
+    done = read_json(run.done_file)
+    assert done["status"] == "ok"
+    assert done["summary"] == "tiga keputusan"
+    assert done["phases_skipped"] == [{"phase": "F4", "reason": reason}]
+    assert outcome.status == "ok"
+
+
 def test_cleaning_mode_stops_after_f1(tmp_path, settings) -> None:
     paths = _run_dari(
         tmp_path, settings, [tulis_catatan(tmp_path / "catatan.csv")], "2026-01-01-bersih"

@@ -143,10 +143,14 @@ finish(status: str, summary: str) -> ends the run
 
 | Status | When |
 |---|---|
-| ok | F7 completed and the report was written |
-| partial | some phases were skipped or blocked, but a report exists |
+| ok | F7 completed and the report was written; every other phase was either completed or closed as not applicable to this data |
+| partial | a phase was blocked or failed, a finding was demoted by the audit, or the report is shorter than the full path allows |
 | blocked | the data cannot support the analysis; a "data not ready" report was written |
 | failed | something unrecoverable happened; explain what |
+
+A phase that does not apply is not a partial run: F4 without a customer
+identifier is a measurement of the data, recorded in `phases_skipped` and in
+section 8, and the run stays `ok`.
 
 `summary` is one sentence in Indonesian, at most 200 characters. It appears in the
 UI and in `done.json`.

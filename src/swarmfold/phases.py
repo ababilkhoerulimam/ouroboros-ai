@@ -25,6 +25,8 @@ PHASES: tuple[str, ...] = ("F1", "F2", "F3", "F4", "F5", "F6", "F7")
 START = ""
 
 MAX_RETURNS = 2
+#: Alasan pengganti bila fase ditutup tidak berlaku tanpa alasan dari model.
+_NO_REASON = "tidak ditandai selesai oleh model"
 _STATE_FILE = "phase.json"
 _MODULES = ("style", "evidence", "loop", "tools", "report", "deepdive")
 
@@ -83,6 +85,16 @@ class PhaseController:
                 if name in PHASES and isinstance(used, int) and not isinstance(used, bool):
                     self._returns[name] = max(0, used)
 
+        # Alasan fase ditutup sebagai tidak berlaku. Disimpan per fase karena
+        # `done.json.phases_skipped` wajib memuat alasan model (CONTRACTS §7),
+        # bukan kalimat bawaan controller.
+        self._skips: dict[str, str] = {}
+        skips = state.get("skips")
+        if isinstance(skips, dict):
+            for name, reason in skips.items():
+                if name in PHASES and isinstance(reason, str) and reason.strip():
+                    self._skips[name] = reason
+
     # -- keadaan ------------------------------------------------------------
 
     @property
@@ -107,12 +119,24 @@ class PhaseController:
         """Berapa kali controller sudah kembali ke ``phase``."""
         return self._returns.get(phase, 0)
 
-    def mark_completed(self, phase: str, ok: bool = True) -> None:
+    def mark_completed(self, phase: str, ok: bool = True, reason: str = "") -> None:
         """Catat fase ditutup. ``ok=False`` berarti gagal atau tidak berlaku."""
         if phase not in PHASES:
             raise ValueError(f"fase tidak dikenal: {phase!r}; pilih {_names(PHASES)}")
         self._completed[phase] = bool(ok)
+        if ok:
+            self._skips.pop(phase, None)
+        else:
+            self._skips[phase] = reason.strip() or _NO_REASON
         self._save()
+
+    def skipped(self) -> list[dict[str, str]]:
+        """Fase yang ditutup sebagai tidak berlaku, dengan alasan aslinya."""
+        return [
+            {"phase": name, "reason": self._skips[name]}
+            for name in PHASES
+            if name in self._skips and not self.is_completed(name)
+        ]
 
     # -- transisi -----------------------------------------------------------
 
@@ -195,6 +219,10 @@ class PhaseController:
 
         if close_current is not None and current != START:
             self._completed[current] = bool(close_current)
+            if close_current:
+                self._skips.pop(current, None)
+            else:
+                self._skips[current] = reason.strip() or _NO_REASON
         self._current = target
         self._last_reason = reason
         self._save()
@@ -275,6 +303,7 @@ class PhaseController:
                 "phase": self._current,
                 "completed": dict(self._completed),
                 "returns": dict(self._returns),
+                "skips": dict(self._skips),
                 "last_reason": self._last_reason,
             },
         )
