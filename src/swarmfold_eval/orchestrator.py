@@ -99,7 +99,14 @@ def _ringkas(skor: dict[str, Any]) -> dict[str, Any]:
 
 
 def pinned_scorer(pin_root: Path, evals_root: Path) -> Scorer:
-    """Skorer yang menjalankan CLI dari salinan terpin, bukan dari `src/`."""
+    """Skorer yang menjalankan CLI dari salinan terpin, bukan dari `src/`.
+
+    Kedua path dijadikan absolut lebih dulu: proses ini berjalan dengan `cwd`
+    di direktori pin, jadi `--root evals` yang relatif akan dicari di bawah
+    direktori pin dan truth tidak ditemukan.
+    """
+    pin_root = Path(pin_root).resolve()
+    evals_root = Path(evals_root).resolve()
 
     def score(run_dir: Path, case_id: str) -> dict[str, Any]:
         env = {**os.environ, "PYTHONPATH": str(pin_root)}
@@ -110,7 +117,7 @@ def pinned_scorer(pin_root: Path, evals_root: Path) -> Scorer:
                 "swarmfold_verify.cli",
                 "score",
                 "--run",
-                str(run_dir),
+                str(Path(run_dir).resolve()),
                 "--case",
                 case_id,
                 "--root",
@@ -144,30 +151,39 @@ def run_pipeline(
         "PYTHONPATH": str(Path(worktree) / "src"),
         "PYTHONDONTWRITEBYTECODE": "1",
     }
-    hasil = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "swarmfold_eval.runner",
-            "--case",
-            case_id,
-            "--input",
-            str(input_dir),
-            "--data-root",
-            str(data_root),
-            "--replica",
-            str(replica),
-        ],
-        cwd=worktree,
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=RUN_TIMEOUT_S,
-        check=False,
-    )
-    if hasil.returncode != 0:
+    try:
+        hasil = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "swarmfold_eval.runner",
+                "--case",
+                case_id,
+                "--input",
+                str(input_dir),
+                "--data-root",
+                str(data_root),
+                "--replica",
+                str(replica),
+            ],
+            cwd=worktree,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=RUN_TIMEOUT_S,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
         raise OrchestratorError(
-            f"run {case_id} r{replica} gagal: {hasil.stderr.strip()[-800:]}"
+            f"run {case_id} r{replica} melewati batas {RUN_TIMEOUT_S} dtk"
+        ) from error
+    if hasil.returncode != 0:
+        # Proses anak bisa mati tanpa menulis stderr (dibunuh sistem). Tanpa
+        # exit code dan sisa stdout, entri baseline hanya berbunyi "gagal: "
+        # dan penyebabnya tidak bisa dilacak lagi setelah kejadian.
+        detail = hasil.stderr.strip() or hasil.stdout.strip() or "(tanpa keluaran)"
+        raise OrchestratorError(
+            f"run {case_id} r{replica} gagal (exit {hasil.returncode}): {detail[-800:]}"
         )
     return Path(json.loads(hasil.stdout.strip().splitlines()[-1])["run_dir"])
 

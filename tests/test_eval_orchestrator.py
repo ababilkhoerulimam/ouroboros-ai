@@ -315,3 +315,58 @@ def test_context_carries_scores_scope_and_files(siap: tuple[Path, Path, dict]) -
     assert all(
         path.startswith(patcher.ALLOWED) for path in konteks["files"]
     )
+
+
+# -- jalur subprocess: path absolut dan galat yang bisa dilacak --------------
+
+
+def test_pinned_scorer_memakai_path_absolut(
+    siap: tuple[Path, Path, dict], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Skorer berjalan dengan `cwd` di direktori pin, jadi path relatif salah.
+
+    `--root evals` yang relatif akan dicari di bawah direktori pin: truth tidak
+    ditemukan dan semua run tercatat gagal meski run-nya sendiri selesai.
+    """
+    root, repo, lock = siap
+    tercatat: dict[str, list[str]] = {}
+
+    def run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        tercatat["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(orchestrator.subprocess, "run", run)
+    scorer = orchestrator.pinned_scorer(root / "pins", Path("evals"))
+
+    assert scorer(Path("runs/x"), "trend-01") == {}
+
+    cmd = tercatat["cmd"]
+    akar = Path(cmd[cmd.index("--root") + 1])
+    direktori_run = Path(cmd[cmd.index("--run") + 1])
+    assert akar == Path("evals").resolve()
+    assert direktori_run.is_absolute()
+
+
+def test_run_pipeline_melaporkan_exit_code(
+    siap: tuple[Path, Path, dict], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Proses anak yang mati tanpa stderr tetap harus meninggalkan jejak."""
+    root, repo, lock = siap
+
+    def run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 3, stdout="", stderr="")
+
+    monkeypatch.setattr(orchestrator.subprocess, "run", run)
+
+    with pytest.raises(orchestrator.OrchestratorError) as info:
+        orchestrator.run_pipeline(
+            repo,
+            "trend-01",
+            root / "cases" / "trend-01" / "input",
+            0,
+            data_root=root / "runs",
+        )
+
+    pesan = str(info.value)
+    assert "exit 3" in pesan
+    assert "tanpa keluaran" in pesan

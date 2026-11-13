@@ -226,3 +226,7 @@ inbox/
 # worktree sementara loop evolusi
 evals/worktrees/
 evals/runs/
+
+# Dokumen internal development
+docs/prd/
+

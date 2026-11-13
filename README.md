@@ -128,19 +128,10 @@ Repositori diverifikasi secara ketat melalui test suite otomatis:
 pytest
 ```
 
-## Dokumentasi Teknis
+## Dokumentasi
 
-Rincian spesifikasi desain dan kontrak teknis tersimpan di dalam folder dokumentasi:
-
-| Dokumen | Topik |
-|---|---|
-| [docs/prd/PRD.md](docs/prd/PRD.md) | Definisi masalah, pengguna, batasan cakupan, metrik keberhasilan, dan mitigasi risiko |
-| [docs/prd/ARCHITECTURE.md](docs/prd/ARCHITECTURE.md) | Arsitektur container, isolasi kernel, manajemen kredensial, dan batas ketahanan |
-| [docs/prd/LANES.md](docs/prd/LANES.md) | Rincian tujuh fase analisis, aturan deep-dive, serta kontrak penulisan visualisasi |
-| [docs/prd/CONTRACTS.md](docs/prd/CONTRACTS.md) | Spesifikasi skema JSON, format bukti E-###, dan tata letak direktori run |
-| [docs/prd/REPORT-STANDARD.md](docs/prd/REPORT-STANDARD.md) | Standar gaya penulisan laporan bisnis, daftar kata terlarang, dan pedoman angka |
-| [docs/prd/ROADMAP.md](docs/prd/ROADMAP.md) | Milestone pengembangan sistem |
-| [docs/EVOLUSI.md](docs/EVOLUSI.md) | Panduan operasional loop evolusi mandiri dan sistem pengaman branch |
+Panduan operasional dan arsitektur pengaman loop evolusi mandiri:
+- [docs/EVOLUSI.md](docs/EVOLUSI.md): Panduan menjalankan loop evaluasi mandiri, verifier pinning, dan aturan pembatasan branch.
 
 ## Lisensi
 
