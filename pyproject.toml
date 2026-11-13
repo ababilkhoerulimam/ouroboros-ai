@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "swarmfold"
+name = "ouroboros-ai"
 version = "0.1.0"
 description = "Analis data otonom untuk usaha kecil: unggah data, terima notebook, laporan, dan data bersih."
 readme = "README.md"
